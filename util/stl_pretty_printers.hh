@@ -60,13 +60,13 @@ void pretty_print_key_value_container(std::ostream& os, ForwardIt begin, Forward
 // Pretty printers for STL stuff.
 namespace std {
 
-template <typename T>
-std::ostream& operator<<(std::ostream& os, const std::vector<T>& c) {
+template <class T, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::vector<T, Allocator>& c) {
     ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
     return os;
 }
 
-template <typename Key, typename T, typename Hash, typename KeyEqual, typename Allocator>
+template <class Key, class T, class Hash, class KeyEqual, class Allocator>
 std::ostream& operator<<(std::ostream& os, const std::unordered_map<Key, T, Hash, KeyEqual, Allocator>& c) {
     ::seastar::pretty_print_key_value_container(os, c.cbegin(), c.cend());
     return os;
