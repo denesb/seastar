@@ -25,38 +25,50 @@
 #include <vector>
 #include <unordered_map>
 
+namespace seastar {
+
+template <class ForwardIt>
+void pretty_print_value_container(std::ostream& os, ForwardIt begin, ForwardIt end) {
+    if (begin == end) {
+        os << "{ }";
+        return;
+    }
+
+    os << "{" << *begin;
+    while (++begin != end) {
+        os << ", " << *begin;
+    }
+    os << "}";
+}
+
+template <class ForwardIt>
+void pretty_print_key_value_container(std::ostream& os, ForwardIt begin, ForwardIt end) {
+    if (begin == end) {
+        os << "{ }";
+        return;
+    }
+
+    os << "{{" << begin->first << " -> " << begin->second << "}";
+    while (++begin != end) {
+        os << ", { " << begin->first << " -> " << begin->second << "}";
+    }
+    os << "}";
+}
+
+} // namespace seastar
+
 // Pretty printers for STL stuff.
 namespace std {
 
 template <typename T>
-std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
-    bool first = true;
-    os << "{";
-    for (auto&& elem : v) {
-        if (!first) {
-            os << ", ";
-        } else {
-            first = false;
-        }
-        os << elem;
-    }
-    os << "}";
+std::ostream& operator<<(std::ostream& os, const std::vector<T>& c) {
+    ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
     return os;
 }
 
 template <typename Key, typename T, typename Hash, typename KeyEqual, typename Allocator>
-std::ostream& operator<<(std::ostream& os, const std::unordered_map<Key, T, Hash, KeyEqual, Allocator>& v) {
-    bool first = true;
-    os << "{";
-    for (auto&& elem : v) {
-        if (!first) {
-            os << ", ";
-        } else {
-            first = false;
-        }
-        os << "{ " << elem.first << " -> " << elem.second << "}";
-    }
-    os << "}";
+std::ostream& operator<<(std::ostream& os, const std::unordered_map<Key, T, Hash, KeyEqual, Allocator>& c) {
+    ::seastar::pretty_print_key_value_container(os, c.cbegin(), c.cend());
     return os;
 }
 
