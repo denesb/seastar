@@ -26,6 +26,7 @@
 #include "net/packet-data-source.hh"
 #include "apps/memcached/ascii.hh"
 #include "core/future-util.hh"
+#include "util/stl_pretty_printers.hh"
 
 using namespace seastar;
 using namespace net;

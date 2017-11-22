@@ -26,6 +26,7 @@
 #include "core/sleep.hh"
 #include "net/dns.hh"
 #include "tls_echo_server.hh"
+#include "util/stl_pretty_printers.hh"
 
 using namespace seastar;
 namespace bpo = boost::program_options;

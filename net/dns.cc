@@ -32,6 +32,7 @@
 #include "core/reactor.hh"
 #include "core/gate.hh"
 #include "util/log.hh"
+#include "util/stl_pretty_printers.hh"
 
 namespace seastar {
 

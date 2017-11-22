@@ -698,39 +698,4 @@ inline string_type to_sstring(T value) {
 
 }
 
-namespace std {
-template <typename T>
-inline
-std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
-    bool first = true;
-    os << "{";
-    for (auto&& elem : v) {
-        if (!first) {
-            os << ", ";
-        } else {
-            first = false;
-        }
-        os << elem;
-    }
-    os << "}";
-    return os;
-}
-
-template <typename Key, typename T, typename Hash, typename KeyEqual, typename Allocator>
-std::ostream& operator<<(std::ostream& os, const std::unordered_map<Key, T, Hash, KeyEqual, Allocator>& v) {
-    bool first = true;
-    os << "{";
-    for (auto&& elem : v) {
-        if (!first) {
-            os << ", ";
-        } else {
-            first = false;
-        }
-        os << "{ " << elem.first << " -> " << elem.second << "}";
-    }
-    os << "}";
-    return os;
-}
-}
-
 #endif /* SSTRING_HH_ */

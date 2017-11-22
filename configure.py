@@ -361,6 +361,7 @@ core = [
     'util/log.cc',
     'util/backtrace.cc',
     'util/alloc_failure_injector.cc',
+    'util/stl_pretty_printers.cc',
     'net/packet.cc',
     'net/posix-stack.cc',
     'net/net.cc',

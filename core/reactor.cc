@@ -97,6 +97,7 @@
 #endif
 
 #include "util/defer.hh"
+#include "util/stl_pretty_printers.hh"
 #include "core/metrics.hh"
 #include "execution_stage.hh"
 #include "exception_hacks.hh"

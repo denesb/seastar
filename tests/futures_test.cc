@@ -27,6 +27,7 @@
 #include "core/do_with.hh"
 #include "core/shared_future.hh"
 #include "core/thread.hh"
+#include "util/stl_pretty_printers.hh"
 #include <boost/iterator/counting_iterator.hpp>
 
 using namespace seastar;
