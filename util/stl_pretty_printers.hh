@@ -22,7 +22,14 @@
 #pragma once
 
 #include <ostream>
+#include <array>
 #include <vector>
+#include <deque>
+#include <forward_list>
+#include <list>
+#include <set>
+#include <map>
+#include <unordered_set>
 #include <unordered_map>
 
 namespace seastar {
@@ -60,8 +67,68 @@ void pretty_print_key_value_container(std::ostream& os, ForwardIt begin, Forward
 // Pretty printers for STL stuff.
 namespace std {
 
+// Sequence Containers
+
+template <typename T, size_t N>
+std::ostream& operator<<(std::ostream& os, const std::array<T, N>& c) {
+    ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
 template <class T, class Allocator>
 std::ostream& operator<<(std::ostream& os, const std::vector<T, Allocator>& c) {
+    ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
+template <class T, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::deque<T, Allocator>& c) {
+    ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
+template <class T, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::forward_list<T, Allocator>& c) {
+    ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
+template <class T, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::list<T, Allocator>& c) {
+    ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
+// Associative containers
+
+template <class Key, class Compare, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::set<Key, Compare, Allocator>& c) {
+    ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
+template <class Key, class T, class Compare, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::map<Key, T, Compare, Allocator>& c) {
+    ::seastar::pretty_print_key_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
+template <class Key, class Compare, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::multiset<Key, Compare, Allocator>& c) {
+    ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
+template <class Key, class T, class Compare, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::multimap<Key, T, Compare, Allocator>& c) {
+    ::seastar::pretty_print_key_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
+// Unordered associative containers
+
+template <class Key, class Hash, class KeyEqual, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::unordered_set<Key, Hash, KeyEqual, Allocator>& c) {
     ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
     return os;
 }
@@ -71,6 +138,20 @@ std::ostream& operator<<(std::ostream& os, const std::unordered_map<Key, T, Hash
     ::seastar::pretty_print_key_value_container(os, c.cbegin(), c.cend());
     return os;
 }
+
+template <class Key, class Hash, class KeyEqual, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::unordered_multiset<Key, Hash, KeyEqual, Allocator>& c) {
+    ::seastar::pretty_print_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
+template <class Key, class T, class Hash, class KeyEqual, class Allocator>
+std::ostream& operator<<(std::ostream& os, const std::unordered_multimap<Key, T, Hash, KeyEqual, Allocator>& c) {
+    ::seastar::pretty_print_key_value_container(os, c.cbegin(), c.cend());
+    return os;
+}
+
+// Misc stuff
 
 std::ostream& operator<<(std::ostream&, const std::exception_ptr&);
 std::ostream& operator<<(std::ostream&, const std::exception&);
