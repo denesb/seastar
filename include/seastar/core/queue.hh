@@ -28,13 +28,55 @@
 
 namespace seastar {
 
+GCC6_CONCEPT(
+template <typename T, typename LimitPolicy>
+concept bool QueueLimitPolicy = requires(LimitPolicy p, const T& item, typename LimitPolicy::size_type& actual,
+        const typename LimitPolicy::size_type& max) {
+    // Is the queue full, according to max?
+    { p.full(actual, max) } -> bool;
+    // Update actual to reflect `item` added to the queue.
+    p.add(actual, item);
+    // Update actual to reflect `item` removed from the queue.
+    p.substract(actual, item);
+};
+)
+
+template <typename T>
+/// Default limit policy for queue.
+///
+/// Uses the number of items to determine when the queue is full.
+class ItemCountLimitPolicy {
+public:
+    using size_type = size_t;
+
+public:
+    bool full(const size_type& actual, const size_type& max) const { return actual >= max; }
+    void add(size_type& actual, const T& item) { ++actual; }
+    void substract(size_type& actual, const T& item) { --actual; }
+};
+
 /// Asynchronous single-producer single-consumer queue with limited capacity.
 /// There can be at most one producer-side and at most one consumer-side operation active at any time.
 /// Operations returning a future are considered to be active until the future resolves.
-template <typename T>
-class queue {
+/// \tparam T the type of items.
+/// \tparam LimitPolicy the policy that determines when the queue is considered
+///     full. The `LimitPolicy` has to comply with the `QueueLimitPolicy`
+///     concept. By default ItemCountLimitPolicy is used, a policy that only
+///     considers the number of items in the queue is used.
+///
+/// \see ItemCountLimitPolicy
+template <typename T, typename LimitPolicy = ItemCountLimitPolicy<T>>
+GCC6_CONCEPT(
+    requires QueueLimitPolicy<T, LimitPolicy>
+)
+class queue : private LimitPolicy {
+public:
+    using size_type = typename LimitPolicy::size_type;
+
+private:
     std::queue<T, circular_buffer<T>> _q;
-    size_t _max;
+    size_type _actual = {};
+    size_type _max;
     compat::optional<promise<>> _not_empty;
     compat::optional<promise<>> _not_full;
     std::exception_ptr _ex = nullptr;
@@ -42,7 +84,9 @@ private:
     void notify_not_empty();
     void notify_not_full();
 public:
-    explicit queue(size_t size);
+    /// Can only be used if `LimitPolicy` is default constructible.
+    explicit queue(size_type size);
+    explicit queue(size_type size, LimitPolicy limit_policy);
 
     /// \brief Push an item.
     ///
@@ -90,18 +134,18 @@ public:
     /// A producer-side operation. Cannot be called concurrently with other producer-side operations.
     future<> push_eventually(T&& data);
 
-    /// Returns the number of items currently in the queue.
-    size_t size() const { return _q.size(); }
+    /// Returns the current size of the queue.
+    size_type size() const { return _actual; }
 
     /// Returns the size limit imposed on the queue during its construction
-    /// or by a call to set_max_size(). If the queue contains max_size()
-    /// items (or more), further items cannot be pushed until some are popped.
-    size_t max_size() const { return _max; }
+    /// or by a call to set_max_size(). If the queue is full according to
+    /// max size, further items cannot be pushed until some are popped.
+    size_type max_size() const { return _max; }
 
     /// Set the maximum size to a new value. If the queue's max size is reduced,
     /// items already in the queue will not be expunged and the queue will be temporarily
     /// bigger than its max_size.
-    void set_max_size(size_t max) {
+    void set_max_size(size_type max) {
         _max = max;
         if (!full()) {
             notify_not_full();
@@ -126,35 +170,43 @@ public:
     }
 };
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-queue<T>::queue(size_t size)
+queue<T, LimitPolicy>::queue(size_type size)
     : _max(size) {
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-void queue<T>::notify_not_empty() {
+queue<T, LimitPolicy>::queue(size_type size, LimitPolicy limit_policy)
+    : LimitPolicy(std::move(limit_policy))
+    , _max(size) {
+}
+
+template <typename T, typename LimitPolicy>
+inline
+void queue<T, LimitPolicy>::notify_not_empty() {
     if (_not_empty) {
         _not_empty->set_value();
         _not_empty = compat::optional<promise<>>();
     }
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-void queue<T>::notify_not_full() {
+void queue<T, LimitPolicy>::notify_not_full() {
     if (_not_full) {
         _not_full->set_value();
         _not_full = compat::optional<promise<>>();
     }
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-bool queue<T>::push(T&& data) {
-    if (_q.size() < _max) {
+bool queue<T, LimitPolicy>::push(T&& data) {
+    if (!LimitPolicy::full(_actual, _max)) {
         _q.push(std::move(data));
+        LimitPolicy::add(_actual, _q.back());
         notify_not_empty();
         return true;
     } else {
@@ -162,20 +214,21 @@ bool queue<T>::push(T&& data) {
     }
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-T queue<T>::pop() {
-    if (_q.size() == _max) {
-        notify_not_full();
-    }
+T queue<T, LimitPolicy>::pop() {
     T data = std::move(_q.front());
     _q.pop();
+    LimitPolicy::substract(_actual, data);
+    if (!LimitPolicy::full(_actual, _max)) {
+        notify_not_full();
+    }
     return data;
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-future<T> queue<T>::pop_eventually() {
+future<T> queue<T, LimitPolicy>::pop_eventually() {
     if (_ex) {
         return make_exception_future<T>(_ex);
     }
@@ -192,33 +245,36 @@ future<T> queue<T>::pop_eventually() {
     }
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-future<> queue<T>::push_eventually(T&& data) {
+future<> queue<T, LimitPolicy>::push_eventually(T&& data) {
     if (_ex) {
         return make_exception_future<>(_ex);
     }
     if (full()) {
         return not_full().then([this, data = std::move(data)] () mutable {
+            LimitPolicy::add(_actual, data);
             _q.push(std::move(data));
             notify_not_empty();
         });
     } else {
+        LimitPolicy::add(_actual, data);
         _q.push(std::move(data));
         notify_not_empty();
         return make_ready_future<>();
     }
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 template <typename Func>
 inline
-bool queue<T>::consume(Func&& func) {
+bool queue<T, LimitPolicy>::consume(Func&& func) {
     if (_ex) {
         std::rethrow_exception(_ex);
     }
     bool running = true;
     while (!_q.empty() && running) {
+        LimitPolicy::substract(_actual, _q.front());
         running = func(std::move(_q.front()));
         _q.pop();
     }
@@ -228,21 +284,21 @@ bool queue<T>::consume(Func&& func) {
     return running;
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-bool queue<T>::empty() const {
+bool queue<T, LimitPolicy>::empty() const {
     return _q.empty();
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-bool queue<T>::full() const {
-    return _q.size() >= _max;
+bool queue<T, LimitPolicy>::full() const {
+    return LimitPolicy::full(_actual, _max);
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-future<> queue<T>::not_empty() {
+future<> queue<T, LimitPolicy>::not_empty() {
     if (_ex) {
         return make_exception_future<>(_ex);
     }
@@ -254,9 +310,9 @@ future<> queue<T>::not_empty() {
     }
 }
 
-template <typename T>
+template <typename T, typename LimitPolicy>
 inline
-future<> queue<T>::not_full() {
+future<> queue<T, LimitPolicy>::not_full() {
     if (_ex) {
         return make_exception_future<>(_ex);
     }
