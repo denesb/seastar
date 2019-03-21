@@ -28,12 +28,38 @@
 
 namespace seastar {
 
+GCC6_CONCEPT(
+template <typename T, typename Measurer>
+concept bool ItemMeasurer = requires(const T& item, Measurer& measurer) {
+    // Measure the weight of the item.
+    { measurer(item) } -> size_t;
+};
+)
+
+template <typename T>
+/// Default measurer for queue.
+///
+/// Returns one for each item.
+struct measure_as_one {
+    size_t operator()(const T&) const { return 1; }
+};
+
 /// Asynchronous single-producer single-consumer queue with limited capacity.
 /// There can be at most one producer-side and at most one consumer-side operation active at any time.
 /// Operations returning a future are considered to be active until the future resolves.
-template <typename T>
+/// \tparam T the type of items.
+/// \tparam Measurer a functor type that maps `T` to `size_t`, that is measures the contribution of
+///     each queue item towards the queue's max size. The `Measurer` has to comply with the
+///     `ItemMeasurer` concept, that is be conceptually equivalent to an `std::function<size_t(const T&)>`.
+///     By default \ref measure_as_one is used, which maps each item to 1.
+template <typename T, typename Measurer = measure_as_one<T>>
+GCC6_CONCEPT(
+    requires ItemMeasurer<T, Measurer>
+)
 class queue {
     std::queue<T, circular_buffer<T>> _q;
+    Measurer _measurer;
+    size_t _actual = {};
     size_t _max;
     compat::optional<promise<>> _not_empty;
     compat::optional<promise<>> _not_full;
@@ -42,7 +68,7 @@ private:
     void notify_not_empty();
     void notify_not_full();
 public:
-    explicit queue(size_t size);
+    explicit queue(size_t size, Measurer measurer = {});
 
     /// \brief Push an item.
     ///
@@ -90,12 +116,15 @@ public:
     /// A producer-side operation. Cannot be called concurrently with other producer-side operations.
     future<> push_eventually(T&& data);
 
-    /// Returns the number of items currently in the queue.
-    size_t size() const { return _q.size(); }
+    /// Returns the current number of items in the queue.
+    size_t item_count() const { return _q.size(); }
+
+    /// Returns the current size of the queue.
+    size_t size() const { return _actual; }
 
     /// Returns the size limit imposed on the queue during its construction
-    /// or by a call to set_max_size(). If the queue contains max_size()
-    /// items (or more), further items cannot be pushed until some are popped.
+    /// or by a call to set_max_size(). If the queue is full according to
+    /// max size, further items cannot be pushed until some are popped.
     size_t max_size() const { return _max; }
 
     /// Set the maximum size to a new value. If the queue's max size is reduced,
@@ -126,35 +155,37 @@ public:
     }
 };
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-queue<T>::queue(size_t size)
-    : _max(size) {
+queue<T, Measurer>::queue(size_t size, Measurer measurer)
+    : _measurer(std::move(measurer))
+    , _max(size) {
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-void queue<T>::notify_not_empty() {
+void queue<T, Measurer>::notify_not_empty() {
     if (_not_empty) {
         _not_empty->set_value();
         _not_empty = compat::optional<promise<>>();
     }
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-void queue<T>::notify_not_full() {
+void queue<T, Measurer>::notify_not_full() {
     if (_not_full) {
         _not_full->set_value();
         _not_full = compat::optional<promise<>>();
     }
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-bool queue<T>::push(T&& data) {
-    if (_q.size() < _max) {
+bool queue<T, Measurer>::push(T&& data) {
+    if (_actual < _max) {
         _q.push(std::move(data));
+        _actual += _measurer(_q.back());
         notify_not_empty();
         return true;
     } else {
@@ -162,20 +193,21 @@ bool queue<T>::push(T&& data) {
     }
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-T queue<T>::pop() {
-    if (_q.size() == _max) {
-        notify_not_full();
-    }
+T queue<T, Measurer>::pop() {
     T data = std::move(_q.front());
     _q.pop();
+    _actual -= _measurer(data);
+    if (_actual < _max) {
+        notify_not_full();
+    }
     return data;
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-future<T> queue<T>::pop_eventually() {
+future<T> queue<T, Measurer>::pop_eventually() {
     if (_ex) {
         return make_exception_future<T>(_ex);
     }
@@ -192,33 +224,36 @@ future<T> queue<T>::pop_eventually() {
     }
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-future<> queue<T>::push_eventually(T&& data) {
+future<> queue<T, Measurer>::push_eventually(T&& data) {
     if (_ex) {
         return make_exception_future<>(_ex);
     }
     if (full()) {
         return not_full().then([this, data = std::move(data)] () mutable {
+            _actual += _measurer(data);
             _q.push(std::move(data));
             notify_not_empty();
         });
     } else {
+        _actual += _measurer(data);
         _q.push(std::move(data));
         notify_not_empty();
         return make_ready_future<>();
     }
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 template <typename Func>
 inline
-bool queue<T>::consume(Func&& func) {
+bool queue<T, Measurer>::consume(Func&& func) {
     if (_ex) {
         std::rethrow_exception(_ex);
     }
     bool running = true;
     while (!_q.empty() && running) {
+        _actual -= _measurer(_q.front());
         running = func(std::move(_q.front()));
         _q.pop();
     }
@@ -228,21 +263,21 @@ bool queue<T>::consume(Func&& func) {
     return running;
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-bool queue<T>::empty() const {
+bool queue<T, Measurer>::empty() const {
     return _q.empty();
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-bool queue<T>::full() const {
-    return _q.size() >= _max;
+bool queue<T, Measurer>::full() const {
+    return _actual >= _max;
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-future<> queue<T>::not_empty() {
+future<> queue<T, Measurer>::not_empty() {
     if (_ex) {
         return make_exception_future<>(_ex);
     }
@@ -254,9 +289,9 @@ future<> queue<T>::not_empty() {
     }
 }
 
-template <typename T>
+template <typename T, typename Measurer>
 inline
-future<> queue<T>::not_full() {
+future<> queue<T, Measurer>::not_full() {
     if (_ex) {
         return make_exception_future<>(_ex);
     }
