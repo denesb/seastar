@@ -28,13 +28,37 @@
 
 namespace seastar {
 
+GCC6_CONCEPT(
+// The limit object is responsible for keeping track of the current
+// elements w.r.t. the to-be imposed limit.
+// Upon each addition and removal of an element to/from the queue it
+// is passed to `add()` and `substract()` respectively. Te limit
+// object is then allowed to decide when the queue is full or not.
+template <typename Limit, typename T>
+concept bool QueueLimit = requires (Limit l1, Limit l2, const T& t) {
+    // Update `l1` with the limit value contained in `l2`.
+    // Any progress tracking (of how the current elements fare against
+    // the limit) should be left unchanged.
+    l1.update_to(std::move(l2));
+    // Register an element being added to the queue.
+    l1.add(t);
+    // Register an element being removed from the queue.
+    l1.substract(t);
+    // Is the queue full according to this limit?
+    { l1.full() } -> bool;
+};
+)
+
 /// Asynchronous single-producer single-consumer queue with limited capacity.
 /// There can be at most one producer-side and at most one consumer-side operation active at any time.
 /// Operations returning a future are considered to be active until the future resolves.
-template <typename T>
-class queue {
+template <typename T, typename Limit>
+GCC6_CONCEPT(
+    requires QueueLimit<Limit, T>
+)
+class basic_queue {
     std::queue<T, circular_buffer<T>> _q;
-    size_t _max;
+    Limit _limit;
     compat::optional<promise<>> _not_empty;
     compat::optional<promise<>> _not_full;
     std::exception_ptr _ex = nullptr;
@@ -42,7 +66,7 @@ private:
     void notify_not_empty();
     void notify_not_full();
 public:
-    explicit queue(size_t size);
+    explicit basic_queue(Limit limit);
 
     /// \brief Push an item.
     ///
@@ -93,16 +117,16 @@ public:
     /// Returns the number of items currently in the queue.
     size_t size() const { return _q.size(); }
 
-    /// Returns the size limit imposed on the queue during its construction
-    /// or by a call to set_max_size(). If the queue contains max_size()
-    /// items (or more), further items cannot be pushed until some are popped.
-    size_t max_size() const { return _max; }
+    /// Returns the limit imposed on the queue during its construction
+    /// or by a call to set_limit(). If the queue is full according to the
+    /// limit, further items cannot be pushed until some are popped.
+    Limit limit() const { return _limit; }
 
-    /// Set the maximum size to a new value. If the queue's max size is reduced,
-    /// items already in the queue will not be expunged and the queue will be temporarily
-    /// bigger than its max_size.
-    void set_max_size(size_t max) {
-        _max = max;
+    /// Set the limit to a new value. If the limit is reduced, items already in
+    /// the queue will not be expunged and the queue will be temporarily bigger
+    /// than the specified limit.
+    void set_limit(Limit limit) {
+        _limit.update_to(std::move(limit));
         if (!full()) {
             notify_not_full();
         }
@@ -126,35 +150,36 @@ public:
     }
 };
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-queue<T>::queue(size_t size)
-    : _max(size) {
+basic_queue<T, Limit>::basic_queue(Limit limit)
+    : _limit(std::move(limit)) {
 }
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-void queue<T>::notify_not_empty() {
+void basic_queue<T, Limit>::notify_not_empty() {
     if (_not_empty) {
         _not_empty->set_value();
         _not_empty = compat::optional<promise<>>();
     }
 }
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-void queue<T>::notify_not_full() {
+void basic_queue<T, Limit>::notify_not_full() {
     if (_not_full) {
         _not_full->set_value();
         _not_full = compat::optional<promise<>>();
     }
 }
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-bool queue<T>::push(T&& data) {
-    if (_q.size() < _max) {
+bool basic_queue<T, Limit>::push(T&& data) {
+    if (!_limit.full()) {
         _q.push(std::move(data));
+        _limit.add(_q.back());
         notify_not_empty();
         return true;
     } else {
@@ -162,20 +187,21 @@ bool queue<T>::push(T&& data) {
     }
 }
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-T queue<T>::pop() {
-    if (_q.size() == _max) {
+T basic_queue<T, Limit>::pop() {
+    if (_limit.full()) {
         notify_not_full();
     }
     T data = std::move(_q.front());
+    _limit.substract(data);
     _q.pop();
     return data;
 }
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-future<T> queue<T>::pop_eventually() {
+future<T> basic_queue<T, Limit>::pop_eventually() {
     if (_ex) {
         return make_exception_future<T>(_ex);
     }
@@ -192,9 +218,9 @@ future<T> queue<T>::pop_eventually() {
     }
 }
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-future<> queue<T>::push_eventually(T&& data) {
+future<> basic_queue<T, Limit>::push_eventually(T&& data) {
     if (_ex) {
         return make_exception_future<>(_ex);
     }
@@ -210,10 +236,10 @@ future<> queue<T>::push_eventually(T&& data) {
     }
 }
 
-template <typename T>
+template <typename T, typename Limit>
 template <typename Func>
 inline
-bool queue<T>::consume(Func&& func) {
+bool basic_queue<T, Limit>::consume(Func&& func) {
     if (_ex) {
         std::rethrow_exception(_ex);
     }
@@ -228,21 +254,21 @@ bool queue<T>::consume(Func&& func) {
     return running;
 }
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-bool queue<T>::empty() const {
+bool basic_queue<T, Limit>::empty() const {
     return _q.empty();
 }
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-bool queue<T>::full() const {
-    return _q.size() >= _max;
+bool basic_queue<T, Limit>::full() const {
+    return _limit.full();
 }
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-future<> queue<T>::not_empty() {
+future<> basic_queue<T, Limit>::not_empty() {
     if (_ex) {
         return make_exception_future<>(_ex);
     }
@@ -254,9 +280,9 @@ future<> queue<T>::not_empty() {
     }
 }
 
-template <typename T>
+template <typename T, typename Limit>
 inline
-future<> queue<T>::not_full() {
+future<> basic_queue<T, Limit>::not_full() {
     if (_ex) {
         return make_exception_future<>(_ex);
     }
@@ -267,6 +293,41 @@ future<> queue<T>::not_full() {
         return _not_full->get_future();
     }
 }
+
+namespace internal {
+
+template <typename T>
+class size_limit {
+    size_t _items = 0;
+
+public:
+    size_t max;
+
+public:
+    explicit size_limit(size_t max) : max(max) { }
+    void update_to(size_limit&& o) { max = o.max; }
+    void add(const T&) { ++_items; }
+    void substract(const T&) { --_items; }
+    bool full() const { return _items >= max; }
+};
+
+}
+
+template <typename T>
+class queue : public basic_queue<T, internal::size_limit<T>> {
+public:
+    explicit queue(size_t size) : basic_queue<T, internal::size_limit<T>>(internal::size_limit<T>{size}) { }
+
+    /// Returns the size limit imposed on the queue during its construction
+    /// or by a call to set_max_size(). If the queue contains max_size()
+    /// items (or more), further items cannot be pushed until some are popped.
+    size_t max_size() const { return this->limit().max; }
+
+    /// Set the maximum size to a new value. If the queue's max size is reduced,
+    /// items already in the queue will not be expunged and the queue will be temporarily
+    /// bigger than its max_size.
+    void set_max_size(size_t max) { this->set_limit(internal::size_limit<T>{max}); }
+};
 
 }
 
