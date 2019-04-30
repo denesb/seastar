@@ -27,6 +27,7 @@
 #include <exception>
 #include <seastar/core/timer.hh>
 #include <seastar/core/expiring_fifo.hh>
+#include <seastar/core/unit_concepts.hh>
 
 namespace seastar {
 
@@ -86,19 +87,19 @@ struct semaphore_default_exception_factory {
 /// customized exceptions on timeout/broken(). It has to provide two static functions
 /// ExceptionFactory::timeout() and ExceptionFactory::broken() which return corresponding
 /// exception object.
-template<typename ExceptionFactory, typename Clock = typename timer<>::clock>
+template<typename ExceptionFactory, typename Clock = typename timer<>::clock, typename Unit = ssize_t>
 class basic_semaphore {
 public:
     using duration = typename timer<Clock>::duration;
     using clock = typename timer<Clock>::clock;
     using time_point = typename timer<Clock>::time_point;
 private:
-    ssize_t _count;
+    Unit _count;
     std::exception_ptr _ex;
     struct entry {
         promise<> pr;
-        size_t nr;
-        entry(promise<>&& pr_, size_t nr_) : pr(std::move(pr_)), nr(nr_) {}
+        Unit nr;
+        entry(promise<>&& pr_, Unit nr_) : pr(std::move(pr_)), nr(nr_) {}
     };
     struct expiry_handler {
         void operator()(entry& e) noexcept {
@@ -106,16 +107,16 @@ private:
         }
     };
     expiring_fifo<entry, expiry_handler, clock> _wait_list;
-    bool has_available_units(size_t nr) const {
-        return _count >= 0 && (static_cast<size_t>(_count) >= nr);
+    bool has_available_units(Unit nr) const {
+        return _count >= Unit{} && _count >= nr;
     }
-    bool may_proceed(size_t nr) const {
+    bool may_proceed(Unit nr) const {
         return has_available_units(nr) && _wait_list.empty();
     }
 public:
     /// Returns the maximum number of units the semaphore counter can hold
-    static constexpr size_t max_counter() {
-        return std::numeric_limits<decltype(_count)>::max();
+    static constexpr Unit max_counter() {
+        return unit_traits<Unit>::max();
     }
 
     /// Constructs a semaphore object with a specific number of units
@@ -123,7 +124,7 @@ public:
     /// an unlocked mutex.
     ///
     /// \param count number of initial units present in the counter.
-    basic_semaphore(size_t count) : _count(count) {}
+    basic_semaphore(Unit count) : _count(count) {}
     /// Waits until at least a specific number of units are available in the
     /// counter, and reduces the counter by that amount of units.
     ///
@@ -134,7 +135,7 @@ public:
     /// \return a future that becomes ready when sufficient units are available
     ///         to satisfy the request.  If the semaphore was \ref broken(), may
     ///         contain an exception.
-    future<> wait(size_t nr = 1) {
+    future<> wait(Unit nr = unit_traits<Unit>::one()) {
         return wait(time_point::max(), nr);
     }
     /// Waits until at least a specific number of units are available in the
@@ -150,7 +151,7 @@ public:
     ///         to satisfy the request.  On timeout, the future contains a
     ///         \ref semaphore_timed_out exception.  If the semaphore was
     ///         \ref broken(), may contain an exception.
-    future<> wait(time_point timeout, size_t nr = 1) {
+    future<> wait(time_point timeout, Unit nr = unit_traits<Unit>::one()) {
         if (may_proceed(nr)) {
             _count -= nr;
             return make_ready_future<>();
@@ -177,7 +178,7 @@ public:
     ///         to satisfy the request.  On timeout, the future contains a
     ///         \ref semaphore_timed_out exception.  If the semaphore was
     ///         \ref broken(), may contain an exception.
-    future<> wait(duration timeout, size_t nr = 1) {
+    future<> wait(duration timeout, Unit nr = unit_traits<Unit>::one()) {
         return wait(clock::now() + timeout, nr);
     }
     /// Deposits a specified number of units into the counter.
@@ -189,7 +190,7 @@ public:
     /// the amount requested.
     ///
     /// \param nr Number of units to deposit (default 1).
-    void signal(size_t nr = 1) {
+    void signal(Unit nr = unit_traits<Unit>::one()) {
         if (_ex) {
             return;
         }
@@ -209,7 +210,7 @@ public:
     /// cause the counter to go negative.
     ///
     /// \param nr Amount of units to consume (default 1).
-    void consume(size_t nr = 1) {
+    void consume(Unit nr = unit_traits<Unit>::one()) {
         if (_ex) {
             return;
         }
@@ -226,7 +227,7 @@ public:
     ///
     /// \param nr number of units to reduce the counter by (default 1).
     /// \return `true` if the counter had sufficient units, and was decremented.
-    bool try_wait(size_t nr = 1) {
+    bool try_wait(Unit nr = unit_traits<Unit>::one()) {
         if (may_proceed(nr)) {
             _count -= nr;
             return true;
@@ -237,13 +238,13 @@ public:
     /// Returns the number of units available in the counter.
     ///
     /// Does not take into account any waiters.
-    size_t current() const { return std::max(_count, ssize_t(0)); }
+    Unit current() const { return std::max(_count, Unit{}); }
 
     /// Returns the number of available units.
     ///
     /// Takes into account units consumed using \ref consume() and therefore
     /// may return a negative value.
-    ssize_t available_units() const { return _count; }
+    Unit available_units() const { return _count; }
 
     /// Returns the current number of waiters
     size_t waiters() const { return _wait_list.size(); }
@@ -272,10 +273,10 @@ public:
     }
 };
 
-template<typename ExceptionFactory, typename Clock>
+template<typename ExceptionFactory, typename Clock, typename Unit>
 inline
 void
-basic_semaphore<ExceptionFactory, Clock>::broken(std::exception_ptr xp) {
+basic_semaphore<ExceptionFactory, Clock, Unit>::broken(std::exception_ptr xp) {
     _ex = xp;
     _count = 0;
     while (!_wait_list.empty()) {

@@ -55,4 +55,18 @@ struct counting_measurer {
     constexpr Size operator()(const T&) const { return Size{1}; }
 };
 
+template <typename Unit, typename = typename std::enable_if<std::is_arithmetic<Unit>::value>::type>
+struct unit_traits {
+    static constexpr Unit max() { return std::numeric_limits<Unit>::max(); }
+    static constexpr Unit one() { return 1; }
+};
+
+GCC6_CONCEPT(
+template <typename Unit>
+concept bool SemaphoreUnit = QueueSize<Unit> && requires() {
+    { unit_traits<Unit>::max() } -> Unit;
+    { unit_traits<Unit>::one() } -> Unit;
+};
+)
+
 } // namespace seastar
