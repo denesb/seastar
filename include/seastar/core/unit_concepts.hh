@@ -50,22 +50,24 @@ concept bool QueueItemMeasurer = requires(Measurer m, const T& t) {
 };
 )
 
-template <typename Size, typename T, typename = typename std::enable_if<std::is_arithmetic<Size>::value>::type>
+template <typename Size, typename T, typename = std::enable_if_t<std::is_arithmetic_v<Size>>>
 struct counting_measurer {
     constexpr Size operator()(const T&) const { return Size{1}; }
 };
 
-template <typename Unit, typename = typename std::enable_if<std::is_arithmetic<Unit>::value>::type>
+template <typename Unit, typename = std::enable_if_t<std::is_arithmetic_v<Unit>>>
 struct unit_traits {
-    static constexpr Unit max() { return std::numeric_limits<Unit>::max(); }
-    static constexpr Unit one() { return 1; }
+    using signed_unit = std::make_signed_t<Unit>;
+    using unsigned_unit = std::make_unsigned_t<Unit>;
+    static constexpr signed_unit signed_max() { return std::numeric_limits<signed_unit>::max(); }
+    static constexpr unsigned_unit unsigned_one() { return 1; }
 };
 
 GCC6_CONCEPT(
 template <typename Unit>
-concept bool SemaphoreUnit = QueueSize<Unit> && requires() {
-    { unit_traits<Unit>::max() } -> Unit;
-    { unit_traits<Unit>::one() } -> Unit;
+concept bool SemaphoreUnit = QueueSize<unit_traits<Unit>::signed_unit> && QueueSize<unit_traits<Unit>::unsigned_unit> && requires() {
+    { unit_traits<Unit>::signed_max() } -> typename unit_traits<Unit>::signed_unit;
+    { unit_traits<Unit>::unsigned_one() } -> typename unit_traits<Unit>::unsigned_unit;
 };
 )
 

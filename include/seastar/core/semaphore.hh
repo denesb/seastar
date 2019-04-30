@@ -87,19 +87,21 @@ struct semaphore_default_exception_factory {
 /// customized exceptions on timeout/broken(). It has to provide two static functions
 /// ExceptionFactory::timeout() and ExceptionFactory::broken() which return corresponding
 /// exception object.
-template<typename ExceptionFactory, typename Clock = typename timer<>::clock, typename Unit = ssize_t>
+template<typename ExceptionFactory, typename Clock = typename timer<>::clock, typename Unit = size_t>
 class basic_semaphore {
 public:
     using duration = typename timer<Clock>::duration;
     using clock = typename timer<Clock>::clock;
     using time_point = typename timer<Clock>::time_point;
+    using signed_unit = typename unit_traits<Unit>::signed_unit;
+    using unsigned_unit = typename unit_traits<Unit>::unsigned_unit;
 private:
-    Unit _count;
+    signed_unit _count;
     std::exception_ptr _ex;
     struct entry {
         promise<> pr;
-        Unit nr;
-        entry(promise<>&& pr_, Unit nr_) : pr(std::move(pr_)), nr(nr_) {}
+        unsigned_unit nr;
+        entry(promise<>&& pr_, unsigned_unit nr_) : pr(std::move(pr_)), nr(nr_) {}
     };
     struct expiry_handler {
         void operator()(entry& e) noexcept {
@@ -107,24 +109,25 @@ private:
         }
     };
     expiring_fifo<entry, expiry_handler, clock> _wait_list;
-    bool has_available_units(Unit nr) const {
-        return _count >= Unit{} && _count >= nr;
+    bool has_available_units(unsigned_unit nr) const {
+        return _count >= signed_unit{} && (static_cast<unsigned_unit>(_count) >= nr);
     }
-    bool may_proceed(Unit nr) const {
+    bool may_proceed(unsigned_unit nr) const {
         return has_available_units(nr) && _wait_list.empty();
     }
 public:
     /// Returns the maximum number of units the semaphore counter can hold
-    static constexpr Unit max_counter() {
-        return unit_traits<Unit>::max();
+    static constexpr unsigned_unit max_counter() {
+        return unit_traits<Unit>::signed_max();
     }
+    static const unsigned_unit one_unit{unit_traits<Unit>::unsigned_one()};
 
     /// Constructs a semaphore object with a specific number of units
     /// in its internal counter. E.g., starting it at 1 is suitable for use as
     /// an unlocked mutex.
     ///
     /// \param count number of initial units present in the counter.
-    basic_semaphore(Unit count) : _count(count) {}
+    basic_semaphore(unsigned_unit count) : _count(count) {}
     /// Waits until at least a specific number of units are available in the
     /// counter, and reduces the counter by that amount of units.
     ///
@@ -135,7 +138,7 @@ public:
     /// \return a future that becomes ready when sufficient units are available
     ///         to satisfy the request.  If the semaphore was \ref broken(), may
     ///         contain an exception.
-    future<> wait(Unit nr = unit_traits<Unit>::one()) {
+    future<> wait(unsigned_unit nr = one_unit) {
         return wait(time_point::max(), nr);
     }
     /// Waits until at least a specific number of units are available in the
@@ -151,7 +154,7 @@ public:
     ///         to satisfy the request.  On timeout, the future contains a
     ///         \ref semaphore_timed_out exception.  If the semaphore was
     ///         \ref broken(), may contain an exception.
-    future<> wait(time_point timeout, Unit nr = unit_traits<Unit>::one()) {
+    future<> wait(time_point timeout, unsigned_unit nr = one_unit) {
         if (may_proceed(nr)) {
             _count -= nr;
             return make_ready_future<>();
@@ -178,7 +181,7 @@ public:
     ///         to satisfy the request.  On timeout, the future contains a
     ///         \ref semaphore_timed_out exception.  If the semaphore was
     ///         \ref broken(), may contain an exception.
-    future<> wait(duration timeout, Unit nr = unit_traits<Unit>::one()) {
+    future<> wait(duration timeout, unsigned_unit nr = one_unit) {
         return wait(clock::now() + timeout, nr);
     }
     /// Deposits a specified number of units into the counter.
@@ -190,7 +193,7 @@ public:
     /// the amount requested.
     ///
     /// \param nr Number of units to deposit (default 1).
-    void signal(Unit nr = unit_traits<Unit>::one()) {
+    void signal(unsigned_unit nr = one_unit) {
         if (_ex) {
             return;
         }
@@ -210,7 +213,7 @@ public:
     /// cause the counter to go negative.
     ///
     /// \param nr Amount of units to consume (default 1).
-    void consume(Unit nr = unit_traits<Unit>::one()) {
+    void consume(unsigned_unit nr = one_unit) {
         if (_ex) {
             return;
         }
@@ -227,7 +230,7 @@ public:
     ///
     /// \param nr number of units to reduce the counter by (default 1).
     /// \return `true` if the counter had sufficient units, and was decremented.
-    bool try_wait(Unit nr = unit_traits<Unit>::one()) {
+    bool try_wait(unsigned_unit nr = one_unit) {
         if (may_proceed(nr)) {
             _count -= nr;
             return true;
@@ -238,13 +241,13 @@ public:
     /// Returns the number of units available in the counter.
     ///
     /// Does not take into account any waiters.
-    Unit current() const { return std::max(_count, Unit{}); }
+    unsigned_unit current() const { return std::max(_count, signed_unit{}); }
 
     /// Returns the number of available units.
     ///
     /// Takes into account units consumed using \ref consume() and therefore
     /// may return a negative value.
-    Unit available_units() const { return _count; }
+    signed_unit available_units() const { return _count; }
 
     /// Returns the current number of waiters
     size_t waiters() const { return _wait_list.size(); }
@@ -278,7 +281,7 @@ inline
 void
 basic_semaphore<ExceptionFactory, Clock, Unit>::broken(std::exception_ptr xp) {
     _ex = xp;
-    _count = 0;
+    _count = unsigned_unit{};
     while (!_wait_list.empty()) {
         auto& x = _wait_list.front();
         x.pr.set_exception(xp);

@@ -49,9 +49,8 @@ private:
     void notify_not_full();
 public:
     explicit queue(Size size, Measurer measurer);
-    /// Uses a default constructed Measurer instance. Only participates in
-    /// overload resolution if the Measurer type is default-constructible.
-    template <typename = typename std::enable_if<std::is_default_constructible<Measurer>::value>::type>
+    /// Uses a default constructed Measurer instance. Can only be used
+    /// when Measurer is default-constructible.
     explicit queue(Size size) : queue(size, Measurer{}) { }
 
     /// \brief Push an item.
