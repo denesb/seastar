@@ -176,12 +176,12 @@ bool queue<T, Size, Measurer>::push(T&& data) {
 template <typename T, typename Size, typename Measurer>
 inline
 T queue<T, Size, Measurer>::pop() {
-    if (_size == _max) {
+    T data = std::move(_q.front());
+    _q.pop();
+    _size -= _measurer(data);
+    if (_size < _max) {
         notify_not_full();
     }
-    T data = std::move(_q.front());
-    _size -= _measurer(data);
-    _q.pop();
     return data;
 }
 
