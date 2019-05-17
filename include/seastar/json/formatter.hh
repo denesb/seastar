@@ -104,7 +104,7 @@ class formatter {
                         return write(stream, m);
                     });
                 }).then([&stream, s] {
-                   stream.write(end(s));
+                   (void)stream.write(end(s));
                 });
             });
         });
