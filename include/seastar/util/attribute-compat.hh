@@ -20,7 +20,7 @@
  */
 #pragma once
 
-#if __has_cpp_attribute(nodiscard) <= __cplusplus
+#if defined(__has_cpp_attribute) && __has_cpp_attribute(nodiscard)
     #define SEASTAR_NODISCARD [[nodiscard]]
 #else
     #define SEASTAR_NODISCARD

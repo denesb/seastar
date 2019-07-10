@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <seastar/core/function_traits.hh>
 #include <seastar/util/alloc_failure_injector.hh>
+#include <seastar/util/attribute-compact.hh>
 #include <seastar/util/gcc6-concepts.hh>
 #include <seastar/util/noncopyable_function.hh>
 
@@ -740,7 +741,7 @@ protected:
 /// scheduling a \c continuation to be executed when the future becomes
 /// available.  Only one such continuation may be scheduled.
 template <typename... T>
-class future : private internal::future_base {
+class SEASTAR_NODISCARD future : private internal::future_base {
     future_state<T...> _state;
     static constexpr bool copy_noexcept = future_state<T...>::copy_noexcept;
 private:
