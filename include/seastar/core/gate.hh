@@ -47,6 +47,15 @@ public:
 class gate {
     size_t _count = 0;
     compat::optional<promise<>> _stopped;
+    std::exception_ptr _ex;
+private:
+    void set_value_or_exception() {
+        if (_ex) {
+            _stopped->set_exception(std::move(_ex));
+        } else {
+            _stopped->set_value();
+        }
+    }
 public:
     /// Registers an in-progress request.
     ///
@@ -60,13 +69,25 @@ public:
     }
     /// Unregisters an in-progress request.
     ///
-    /// If the gate is closed, and there are no more in-progress requests,
+    /// If the gate is closed, and if there are no more in-progress requests,
     /// the \ref closed() promise will be fulfilled.
     void leave() {
         --_count;
         if (!_count && _stopped) {
-            _stopped->set_value();
+            set_value_or_exception();
         }
+    }
+    /// Unregisters an in-progress failed request.
+    ///
+    /// If the gate is closed, and if there are no more in-progress requests,
+    /// the \ref closed() promise will be fulfilled.
+    /// The exception passed here will be re-raised from `close()`. When
+    /// multiple requests fail, only the first exception will be retained.
+    void leave_with_exception(std::exception_ptr ex) {
+        if (!_ex) {
+            _ex = std::move(ex);
+        }
+        leave();
     }
     /// Potentially stop an in-progress request.
     ///
@@ -87,11 +108,14 @@ public:
     /// Future calls to \ref enter() will fail with an exception, and when
     /// all current requests call \ref leave(), the returned future will be
     /// made ready.
+    /// If any requests left the gate with an exception, it will be
+    /// forwarded to the returned future<>. If more then one requests failed,
+    /// only the first exception will be returned.
     future<> close() {
         assert(!_stopped && "seastar::gate::close() cannot be called more than once");
         _stopped = compat::make_optional(promise<>());
         if (!_count) {
-            _stopped->set_value();
+            set_value_or_exception();
         }
         return _stopped->get_future();
     }
@@ -121,6 +145,38 @@ auto
 with_gate(gate& g, Func&& func) {
     g.enter();
     return futurize_apply(std::forward<Func>(func)).finally([&g] { g.leave(); });
+}
+
+/// Executes the function \c func making sure the gate \c g is properly entered
+/// and later on, properly left.
+///
+/// The result of the function is forwarded to the gate. Any exception thrown
+/// from the function will be forwarded to the gate and will be re-thrown from
+/// `gate::close()`. Can be used to wait on fibers that are moved to the
+/// background, and still be notified if there is any error during their
+/// execution.
+///
+/// \param func function to be executed, must return void or future<>.
+/// \param g the gate. Caller must make sure that it outlives this function.
+///
+/// \relates gate
+/// \see gate::leave_with_exception()
+template <typename Func>
+GCC6_CONCEPT(
+    requires std::is_same_v<std::invoke_result_t<Func>, future<>> || std::is_same_v<std::invoke_result_t<Func>, void>
+)
+inline
+void
+with_gate_forwarded(gate& g, Func func) {
+    g.enter();
+    // The result is forwarded to the gate.
+    (void)futurize_apply(std::forward<Func>(func)).then_wrapped([&g] (future<>&& f) {
+        if (f.failed()) {
+            g.leave_with_exception(f.get_exception());
+        } else {
+            g.leave();
+        }
+    });
 }
 /// @}
 
