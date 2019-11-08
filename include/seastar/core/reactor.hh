@@ -139,6 +139,8 @@ class reactor_backend_selector;
 
 class reactor_backend;
 
+class tag_base;
+
 namespace internal {
 
 class reactor_stall_sampler;
@@ -316,6 +318,7 @@ private:
     task_queue_list _activating_task_queues;
     task_queue* _at_destroy_tasks;
     sched_clock::duration _task_quota;
+    tag_base* _tag;
     /// Handler that will be called when there is no task to execute on cpu.
     /// It represents a low priority work.
     /// 
@@ -579,6 +582,10 @@ public:
         }
     }
 
+    tag_base* tag() const {
+        return _tag;
+    }
+
     /// Set a handler that will be called when there is no task to execute on cpu.
     /// Handler should do a low priority work.
     /// 
@@ -677,6 +684,9 @@ private:
     })
     friend future<typename function_traits<Reducer>::return_type>
         reduce_scheduling_group_specific(Reducer reducer, Initial initial_val, scheduling_group_key key);
+
+    friend void push_tag(tag_base&) noexcept;
+    friend tag_base& pop_tag() noexcept;
 public:
     bool wait_and_process(int timeout = 0, const sigset_t* active_sigmask = nullptr);
     future<> readable(pollable_fd_state& fd);

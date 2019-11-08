@@ -47,6 +47,7 @@
 #include <seastar/core/thread_cputime_clock.hh>
 #include <seastar/core/abort_on_ebadf.hh>
 #include <seastar/core/io_queue.hh>
+#include <seastar/core/tag.hh>
 #include <seastar/util/log.hh>
 #include "core/file-impl.hh"
 #include "core/io_desc.hh"
@@ -829,6 +830,7 @@ reactor::reactor(unsigned id, reactor_backend_selector rbs, reactor_config cfg)
     , _cpu_started(0)
     , _cpu_stall_detector(std::make_unique<cpu_stall_detector>(this))
     , _io_context(0)
+    , _tag(new default_tag{})
     , _reuseport(posix_reuseport_detect())
     , _thread_pool(std::make_unique<thread_pool>(this, seastar::format("syscall-{}", id))) {
     _task_queues.push_back(std::make_unique<task_queue>(0, "main", 1000));
@@ -897,6 +899,7 @@ reactor::~reactor() {
             }
         }
     }
+    delete _tag; // should be the default_tag{} we created in the ctor.
 }
 
 bool reactor::wait_and_process(int timeout, const sigset_t* active_sigmask) {
@@ -2063,6 +2066,8 @@ void reactor::register_metrics() {
     });
 }
 
+task::task(scheduling_group sg) : _t(current_tag()), _sg(sg) { }
+
 void reactor::run_tasks(task_queue& tq) {
     // Make sure new tasks will inherit our scheduling group
     *internal::current_scheduling_group_ptr() = scheduling_group(tq._id);
@@ -2072,7 +2077,10 @@ void reactor::run_tasks(task_queue& tq) {
         tasks.pop_front();
         STAP_PROBE(seastar, reactor_run_tasks_single_start);
         task_histogram_add_task(*tsk);
-        tsk->run_and_dispose();
+        {
+            tag_context _{tsk->tag()};
+            tsk->run_and_dispose();
+        }
         tsk.release();
         STAP_PROBE(seastar, reactor_run_tasks_single_end);
         ++tq._tasks_processed;
@@ -4405,6 +4413,33 @@ std::ostream& operator<<(std::ostream& os, const stall_report& sr) {
     return os << format("{} stalls, {} ms stall time, {} ms run time", sr.kernel_stalls, to_ms(sr.stall_time), to_ms(sr.run_wall_time));
 }
 
+}
+
+void default_tag::on_enter() noexcept {
+}
+
+void default_tag::on_leave() noexcept {
+}
+
+tag_base* current_tag() noexcept {
+    if (!engine_is_ready()) {
+        return nullptr;
+    }
+    return engine().tag();
+}
+
+void push_tag(tag_base& t) noexcept {
+    auto* ct = engine()._tag;
+    ct->on_leave();
+    t._prev_tag = ct;
+    engine()._tag = &t;
+}
+
+tag_base& pop_tag() noexcept {
+    auto& t = *engine()._tag;
+    engine()._tag = t._prev_tag;
+    engine()._tag->on_enter();
+    return t;
 }
 
 }

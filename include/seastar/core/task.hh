@@ -24,14 +24,18 @@
 #include <memory>
 #include <seastar/core/scheduling.hh>
 
+#include "seastar/core/tag.hh"
+
 namespace seastar {
 
 class task {
+    tag_base* _t;
     scheduling_group _sg;
 public:
-    explicit task(scheduling_group sg = current_scheduling_group()) : _sg(sg) {}
+    explicit task(scheduling_group sg = current_scheduling_group());
     virtual ~task() noexcept {}
     virtual void run_and_dispose() noexcept = 0;
+    tag_base* tag() const { return _t; }
     scheduling_group group() const { return _sg; }
 };
 
