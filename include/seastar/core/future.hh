@@ -1115,10 +1115,11 @@ private:
         // that happens.
         [&] () noexcept {
             memory::disable_failure_guard dfg;
-            schedule([pr = fut.get_promise(), func = std::forward<Func>(func)] (future_state<T...>&& state) mutable {
+            schedule([pr = fut.get_promise(), func = std::forward<Func>(func), t = current_tag()] (future_state<T...>&& state) mutable {
                 if (state.failed()) {
                     pr.set_exception(std::move(state).get_exception());
                 } else {
+                    tag_context _{t};
                     futurator::apply(std::forward<Func>(func), std::move(state).get_value()).forward_to(std::move(pr));
                 }
             });
@@ -1171,7 +1172,8 @@ private:
         // that happens.
         [&] () noexcept {
             memory::disable_failure_guard dfg;
-            schedule([pr = fut.get_promise(), func = std::forward<Func>(func)] (future_state<T...>&& state) mutable {
+            schedule([pr = fut.get_promise(), func = std::forward<Func>(func), t = current_tag()] (future_state<T...>&& state) mutable {
+                tag_context _{t};
                 futurator::apply(std::forward<Func>(func), future(std::move(state))).forward_to(std::move(pr));
             });
         } ();

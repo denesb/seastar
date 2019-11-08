@@ -830,6 +830,7 @@ reactor::reactor(unsigned id, reactor_backend_selector rbs, reactor_config cfg)
     , _cpu_stall_detector(std::make_unique<cpu_stall_detector>(this))
     , _io_context(0)
     , _reuseport(posix_reuseport_detect())
+    , _tag(new default_tag{})
     , _thread_pool(std::make_unique<thread_pool>(this, seastar::format("syscall-{}", id))) {
     _task_queues.push_back(std::make_unique<task_queue>(0, "main", 1000));
     _task_queues.push_back(std::make_unique<task_queue>(1, "atexit", 1000));
@@ -897,6 +898,7 @@ reactor::~reactor() {
             }
         }
     }
+    delete _tag; // should be the default_tag{} we created in the ctor.
 }
 
 bool reactor::wait_and_process(int timeout, const sigset_t* active_sigmask) {
@@ -4405,6 +4407,30 @@ std::ostream& operator<<(std::ostream& os, const stall_report& sr) {
     return os << format("{} stalls, {} ms stall time, {} ms run time", sr.kernel_stalls, to_ms(sr.stall_time), to_ms(sr.run_wall_time));
 }
 
+}
+
+virtual void default_tag::on_enter() noexcept override {
+}
+
+virtual void default_tag::on_leave() noexcept override {
+}
+
+tag_base& current_tag() noexcept {
+    return engine().tag();
+}
+
+void push_tag(tag_base& t) noexcept {
+    auto* ct = engine()._tag;
+    ct->on_leave();
+    t._prev_tag = ct;
+    engine()._tag = &t;
+}
+
+tag_base& pop_tag() noexcept {
+    auto& t = *engine()._tag;
+    engine()._tag = t._prev_tag;
+    engine()._tag->on_enter();
+    return t;
 }
 
 }

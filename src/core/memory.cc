@@ -521,6 +521,7 @@ bool cpu_pages::grow_span(uint32_t& span_start, uint32_t& nr_pages, unsigned idx
 }
 
 void cpu_pages::free_span(uint32_t span_start, uint32_t nr_pages) {
+    current_tag().memory -= nr_pages * page_size;
     auto idx = index_of(nr_pages);
     while (grow_span(span_start, nr_pages, idx)) {
         ++idx;
@@ -724,6 +725,7 @@ cpu_pages::allocate_small(unsigned size) {
     }
     new (&pool.alloc_site_holder(ptr)) allocation_site_ptr{alloc_site};
 #endif
+    current_tag().memory += pool.object_size();
     return ptr;
 }
 
@@ -1093,6 +1095,7 @@ small_pool::deallocate(void* object) {
     if (_free_count >= _max_free) {
         trim_free_list();
     }
+    current_tag().memory -= object_size();
 }
 
 void
@@ -1177,6 +1180,7 @@ void* allocate_large(size_t size) {
     if ((size_t(size_in_pages) << page_bits) < size) {
         return nullptr; // (size + page_size - 1) caused an overflow
     }
+    current_tag().memory += size_in_pages * page_size;
     return cpu_mem.allocate_large(size_in_pages);
 
 }
