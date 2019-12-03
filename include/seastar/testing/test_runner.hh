@@ -41,11 +41,12 @@ private:
     std::atomic<bool> _started{false};
     exchanger<std::function<future<>()>> _task;
     bool _done = false;
+    int _exit_code{0};
 public:
     void start(int argc, char** argv);
     ~test_runner();
     void run_sync(std::function<future<>()> task);
-    void finalize();
+    int finalize();
 };
 
 test_runner& global_test_runner();
