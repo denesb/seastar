@@ -63,7 +63,8 @@ test_runner::start(int ac, char** av) {
     _thread = std::make_unique<posix_thread>([this, ac, av]() mutable {
         app_template app;
         app.add_options()
-            ("random-seed", boost::program_options::value<unsigned>(), "Random number generator seed");
+            ("random-seed", boost::program_options::value<unsigned>(), "Random number generator seed")
+            ("fail-on-failed-futures", "Fail the test if there are any unhandled failed futures");
         // We guarantee that only one thread is running.
         // We only read this after that one thread is joined, so this is safe.
         _exit_code = app.run(ac, av, [this, &app] {
@@ -87,8 +88,16 @@ test_runner::start(int ac, char** av) {
                     _done = true;
                     return make_ready_future<>();
                 }
-            }).or_terminate();
-          });
+              }).or_terminate();
+            }).then([this, &app] {
+                if (engine().failed_futures()) {
+                    std::cerr << "*** Reactor has non-zero failed futures, there were unhandled exceptional futures\n";
+                    if (app.configuration().count("fail-on-failed-futures")) {
+                        return 1;
+                    }
+                }
+                return 0;
+            });
         });
     });
 }
