@@ -75,7 +75,10 @@ class BacktraceResolver(object):
         self._current_backtrace = []
         self._prefix = None
         self._before_lines = before_lines
-        self._before_lines_queue = collections.deque(maxlen=before_lines)
+        if before_lines < 0:
+            self._before_lines_queue = collections.deque()
+        else:
+            self._before_lines_queue = collections.deque(maxlen=before_lines)
         self._i = 0
         self._known_backtraces = {}
         if context_re is not None:
@@ -250,6 +253,7 @@ cmdline_parser.add_argument(
         metavar='MATCH',
         help='Only resolve backtraces whose non-backtrace lines match the regular-expression.'
         ' The amount of non-backtrace lines considered can be set with --before.'
+        ' Cannot be used when --before is negative (all lines all printed).'
         ' By default no matching is performed.')
 
 cmdline_parser.add_argument(
@@ -271,6 +275,10 @@ args = cmdline_parser.parse_args()
 
 if args.addresses and args.file:
     print("Cannot use both -f and ADDRESS")
+    cmdline_parser.print_help()
+
+if args.match and args.before < 0:
+    print("Cannot use --match with negative --before values")
     cmdline_parser.print_help()
 
 
