@@ -172,16 +172,41 @@ public:
     ///
     /// \param ssg An \ref smp_service_group that controls concurrency on the server side
     ///            of the call
+    /// \param timeout The timeout for getting the call processed on the server
     /// \param func Function to be invoked on all shards
     /// \return Future that becomes ready once all calls have completed
-    future<> invoke_on_all(smp_service_group ssg, std::function<future<> (Service&)> func);
+    future<> invoke_on_all(smp_service_group ssg, smp_timeout_clock::time_point timeout, std::function<future<> (Service&)> func);
+
+    /// Invoke a type-erased function on all instances of @Service.
+    /// The return value becomes ready when all instances have processed
+    /// the message.
+    ///
+    /// \param ssg An \ref smp_service_group that controls concurrency on the server side
+    ///            of the call
+    /// \param func Function to be invoked on all shards
+    /// \return Future that becomes ready once all calls have completed
+    future<> invoke_on_all(smp_service_group ssg, std::function<future<> (Service&)> func) {
+        return invoke_on_all(ssg, smp_no_timeout, std::move(func));
+    }
 
     /// Invoke a type-erased function on all instances of @Service.
     /// The return value becomes ready when all instances have processed
     /// the message.
     future<> invoke_on_all(std::function<future<> (Service&)> func) {
-        return invoke_on_all(default_smp_service_group(), std::move(func));
+        return invoke_on_all(default_smp_service_group(), smp_no_timeout, std::move(func));
     }
+
+    /// Invoke a method on all instances of @Service.
+    /// The return value becomes ready when all instances have processed
+    /// the message.
+    ///
+    /// \param ssg An \ref smp_service_group that controls concurrency on the server side
+    ///            of the call
+    /// \param timeout The timeout for getting the call processed on the server
+    /// \param func Member function of \c Service to be invoked on all shards
+    /// \return Future that becomes ready once all calls have completed
+    template <typename... Args>
+    future<> invoke_on_all(smp_service_group ssg, smp_timeout_clock::time_point timeout, future<> (Service::*func)(Args...), Args... args);
 
     /// Invoke a method on all instances of @Service.
     /// The return value becomes ready when all instances have processed
@@ -192,15 +217,30 @@ public:
     /// \param func Member function of \c Service to be invoked on all shards
     /// \return Future that becomes ready once all calls have completed
     template <typename... Args>
-    future<> invoke_on_all(smp_service_group ssg, future<> (Service::*func)(Args...), Args... args);
+    future<> invoke_on_all(smp_service_group ssg, future<> (Service::*func)(Args...), Args... args) {
+        return invoke_on_all(ssg, smp_no_timeout, func, std::move(args)...);
+    }
 
     /// Invoke a method on all instances of @Service.
     /// The return value becomes ready when all instances have processed
     /// the message.
     template <typename... Args>
     future<> invoke_on_all(future<> (Service::*func)(Args...), Args... args) {
-        return invoke_on_all(default_smp_service_group(), func, std::move(args)...);
+        return invoke_on_all(default_smp_service_group(), smp_no_timeout, func, std::move(args)...);
     }
+
+    /// Invoke a method on all \c Service instances in parallel.
+    ///
+    /// \param ssg An \ref smp_service_group that controls concurrency on the server side
+    ///            of the call
+    /// \param timeout The timeout for getting the call processed on the server
+    /// \param func member function to be called.  Must return \c void or
+    ///             \c future<>.
+    /// \param args arguments to be passed to \c func.
+    /// \return future that becomes ready when the method has been invoked
+    ///         on all instances.
+    template <typename... Args>
+    future<> invoke_on_all(smp_service_group ssg, smp_timeout_clock::time_point timeout, void (Service::*func)(Args...), Args... args);
 
     /// Invoke a method on all \c Service instances in parallel.
     ///
@@ -212,7 +252,9 @@ public:
     /// \return future that becomes ready when the method has been invoked
     ///         on all instances.
     template <typename... Args>
-    future<> invoke_on_all(smp_service_group ssg, void (Service::*func)(Args...), Args... args);
+    future<> invoke_on_all(smp_service_group ssg, void (Service::*func)(Args...), Args... args) {
+        return invoke_on_all(ssg, smp_no_timeout, func, std::move(args)...);
+    }
 
     /// Invoke a method on all \c Service instances in parallel.
     ///
@@ -223,8 +265,21 @@ public:
     ///         on all instances.
     template <typename... Args>
     future<> invoke_on_all(void (Service::*func)(Args...), Args... args) {
-        return invoke_on_all(default_smp_service_group(), func, std::move(args)...);
+        return invoke_on_all(default_smp_service_group(), smp_no_timeout, func, std::move(args)...);
     }
+
+    /// Invoke a callable on all instances of  \c Service.
+    ///
+    /// \param ssg An \ref smp_service_group that controls concurrency on the server side
+    ///            of the call
+    /// \param timeout The timeout for getting the call processed on the server
+    /// \param func a callable with the signature `void (Service&)`
+    ///             or `future<> (Service&)`, to be called on each core
+    ///             with the local instance as an argument.
+    /// \return a `future<>` that becomes ready when all cores have
+    ///         processed the message.
+    template <typename Func>
+    future<> invoke_on_all(smp_service_group ssg, smp_timeout_clock::time_point timeout, Func&& func);
 
     /// Invoke a callable on all instances of  \c Service.
     ///
@@ -236,7 +291,9 @@ public:
     /// \return a `future<>` that becomes ready when all cores have
     ///         processed the message.
     template <typename Func>
-    future<> invoke_on_all(smp_service_group ssg, Func&& func);
+    future<> invoke_on_all(smp_service_group ssg, Func&& func) {
+        return invoke_on_all(ssg, smp_no_timeout, std::forward<Func>(func));
+    }
 
     /// Invoke a callable on all instances of  \c Service.
     ///
@@ -247,8 +304,22 @@ public:
     ///         processed the message.
     template <typename Func>
     future<> invoke_on_all(Func&& func) {
-        return invoke_on_all(default_smp_service_group(), std::forward<Func>(func));
+        return invoke_on_all(default_smp_service_group(), smp_no_timeout, std::forward<Func>(func));
     }
+
+    /// Invoke a callable on all instances of  \c Service except the instance
+    /// which is allocated on current shard.
+    ///
+    /// \param ssg An \ref smp_service_group that controls concurrency on the server side
+    ///            of the call
+    /// \param timeout The timeout for getting the call processed on the server
+    /// \param func a callable with the signature `void (Service&)`
+    ///             or `future<> (Service&)`, to be called on each core
+    ///             with the local instance as an argument.
+    /// \return a `future<>` that becomes ready when all cores but the current one have
+    ///         processed the message.
+    template <typename Func>
+    future<> invoke_on_others(smp_service_group ssg, smp_timeout_clock::time_point timeout, Func&& func);
 
     /// Invoke a callable on all instances of  \c Service except the instance
     /// which is allocated on current shard.
@@ -261,7 +332,9 @@ public:
     /// \return a `future<>` that becomes ready when all cores but the current one have
     ///         processed the message.
     template <typename Func>
-    future<> invoke_on_others(smp_service_group ssg, Func&& func);
+    future<> invoke_on_others(smp_service_group ssg, Func&& func) {
+        return invoke_on_others(ssg, smp_no_timeout, std::forward<Func>(func));
+    }
 
     /// Invoke a callable on all instances of  \c Service except the instance
     /// which is allocated on current shard.
@@ -273,7 +346,7 @@ public:
     ///         processed the message.
     template <typename Func>
     future<> invoke_on_others(Func&& func) {
-        return invoke_on_others(default_smp_service_group(), std::forward<Func>(func));
+        return invoke_on_others(default_smp_service_group(), smp_no_timeout, std::forward<Func>(func));
     }
 
     /// Invoke a method on all instances of `Service` and reduce the results using
@@ -384,17 +457,32 @@ public:
     /// \param id shard id to call
     /// \param ssg An \ref smp_service_group that controls concurrency on the server side
     ///            of the call
+    /// \param timeout The timeout for getting the call processed on the server
+    /// \param func a method of `Service`
+    /// \param args arguments to be passed to `func`
+    /// \return result of calling `func(args)` on the designated instance
+    template <typename Ret, typename... FuncArgs, typename... Args, typename FutureRet = futurize_t<Ret>>
+    FutureRet
+    invoke_on(unsigned id, smp_service_group ssg, smp_timeout_clock::time_point timeout, Ret (Service::*func)(FuncArgs...), Args&&... args) {
+        using futurator = futurize<Ret>;
+        return smp::submit_to(id, ssg, timeout, [this, func, args = std::make_tuple(std::forward<Args>(args)...)] () mutable {
+            auto inst = get_local_service();
+            return futurator::apply(std::mem_fn(func), std::tuple_cat(std::make_tuple<>(inst), std::move(args)));
+        });
+    }
+
+    /// Invoke a method on a specific instance of `Service`.
+    ///
+    /// \param id shard id to call
+    /// \param ssg An \ref smp_service_group that controls concurrency on the server side
+    ///            of the call
     /// \param func a method of `Service`
     /// \param args arguments to be passed to `func`
     /// \return result of calling `func(args)` on the designated instance
     template <typename Ret, typename... FuncArgs, typename... Args, typename FutureRet = futurize_t<Ret>>
     FutureRet
     invoke_on(unsigned id, smp_service_group ssg, Ret (Service::*func)(FuncArgs...), Args&&... args) {
-        using futurator = futurize<Ret>;
-        return smp::submit_to(id, ssg, [this, func, args = std::make_tuple(std::forward<Args>(args)...)] () mutable {
-            auto inst = get_local_service();
-            return futurator::apply(std::mem_fn(func), std::tuple_cat(std::make_tuple<>(inst), std::move(args)));
-        });
+        return invoke_on(id, ssg, smp_no_timeout, func, std::forward<Args>(args)...);
     }
 
     /// Invoke a method on a specific instance of `Service`.
@@ -406,7 +494,25 @@ public:
     template <typename Ret, typename... FuncArgs, typename... Args, typename FutureRet = futurize_t<Ret>>
     FutureRet
     invoke_on(unsigned id, Ret (Service::*func)(FuncArgs...), Args&&... args) {
-        return invoke_on(id, default_smp_service_group(), func, std::forward<Args>(args)...);
+        return invoke_on(id, default_smp_service_group(), smp_no_timeout, func, std::forward<Args>(args)...);
+    }
+
+    /// Invoke a callable on a specific instance of `Service`.
+    ///
+    /// \param id shard id to call
+    /// \param ssg An \ref smp_service_group that controls concurrency on the server side
+    ///            of the call
+    /// \param timeout The timeout for getting the call processed on the server
+    /// \param func a callable with signature `Value (Service&)` or
+    ///        `future<Value> (Service&)` (for some `Value` type)
+    /// \return result of calling `func(instance)` on the designated instance
+    template <typename Func, typename Ret = futurize_t<std::result_of_t<Func(Service&)>>>
+    Ret
+    invoke_on(unsigned id, smp_service_group ssg, smp_timeout_clock::time_point timeout, Func&& func) {
+        return smp::submit_to(id, ssg, timeout, [this, func = std::forward<Func>(func)] () mutable {
+            auto inst = get_local_service();
+            return func(*inst);
+        });
     }
 
     /// Invoke a callable on a specific instance of `Service`.
@@ -420,10 +526,7 @@ public:
     template <typename Func, typename Ret = futurize_t<std::result_of_t<Func(Service&)>>>
     Ret
     invoke_on(unsigned id, smp_service_group ssg, Func&& func) {
-        return smp::submit_to(id, ssg, [this, func = std::forward<Func>(func)] () mutable {
-            auto inst = get_local_service();
-            return func(*inst);
-        });
+        return invoke_on(id, ssg, smp_no_timeout, std::forward<Func>(func));
     }
 
     /// Invoke a callable on a specific instance of `Service`.
@@ -435,7 +538,7 @@ public:
     template <typename Func, typename Ret = futurize_t<std::result_of_t<Func(Service&)>>>
     Ret
     invoke_on(unsigned id, Func&& func) {
-        return invoke_on(id, default_smp_service_group(), std::forward<Func>(func));
+        return invoke_on(id, default_smp_service_group(), smp_no_timeout, std::forward<Func>(func));
     }
 
     /// Gets a reference to the local instance.
@@ -648,9 +751,9 @@ sharded<Service>::stop() {
 
 template <typename Service>
 future<>
-sharded<Service>::invoke_on_all(smp_service_group ssg, std::function<future<> (Service&)> func) {
-    return internal::sharded_parallel_for_each(_instances.size(), [this, ssg, func = std::move(func)] (unsigned c) {
-        return smp::submit_to(c, ssg, [this, func] {
+sharded<Service>::invoke_on_all(smp_service_group ssg, smp_timeout_clock::time_point timeout, std::function<future<> (Service&)> func) {
+    return internal::sharded_parallel_for_each(_instances.size(), [this, ssg, timeout, func = std::move(func)] (unsigned c) {
+        return smp::submit_to(c, ssg, timeout, [this, func] {
             return func(*get_local_service());
         });
     });
@@ -660,8 +763,8 @@ template <typename Service>
 template <typename... Args>
 inline
 future<>
-sharded<Service>::invoke_on_all(smp_service_group ssg, future<> (Service::*func)(Args...), Args... args) {
-    return invoke_on_all(ssg, invoke_on_all_func_type([func, args...] (Service& service) mutable {
+sharded<Service>::invoke_on_all(smp_service_group ssg, smp_timeout_clock::time_point timeout, future<> (Service::*func)(Args...), Args... args) {
+    return invoke_on_all(ssg, timeout, invoke_on_all_func_type([func, args...] (Service& service) mutable {
         return (service.*func)(args...);
     }));
 }
@@ -670,8 +773,8 @@ template <typename Service>
 template <typename... Args>
 inline
 future<>
-sharded<Service>::invoke_on_all(smp_service_group ssg, void (Service::*func)(Args...), Args... args) {
-    return invoke_on_all(ssg, invoke_on_all_func_type([func, args...] (Service& service) mutable {
+sharded<Service>::invoke_on_all(smp_service_group ssg, smp_timeout_clock::time_point timeout, void (Service::*func)(Args...), Args... args) {
+    return invoke_on_all(ssg, timeout, invoke_on_all_func_type([func, args...] (Service& service) mutable {
         (service.*func)(args...);
         return make_ready_future<>();
     }));
@@ -681,10 +784,10 @@ template <typename Service>
 template <typename Func>
 inline
 future<>
-sharded<Service>::invoke_on_all(smp_service_group ssg, Func&& func) {
+sharded<Service>::invoke_on_all(smp_service_group ssg, smp_timeout_clock::time_point timeout, Func&& func) {
     static_assert(std::is_same<futurize_t<std::result_of_t<Func(Service&)>>, future<>>::value,
                   "invoke_on_all()'s func must return void or future<>");
-    return invoke_on_all(ssg, invoke_on_all_func_type([func] (Service& service) mutable {
+    return invoke_on_all(ssg, timeout, invoke_on_all_func_type([func] (Service& service) mutable {
         return futurize<void>::apply(func, service);
     }));
 }
@@ -693,10 +796,10 @@ template <typename Service>
 template <typename Func>
 inline
 future<>
-sharded<Service>::invoke_on_others(smp_service_group ssg, Func&& func) {
+sharded<Service>::invoke_on_others(smp_service_group ssg, smp_timeout_clock::time_point timeout, Func&& func) {
     static_assert(std::is_same<futurize_t<std::result_of_t<Func(Service&)>>, future<>>::value,
                   "invoke_on_others()'s func must return void or future<>");
-    return invoke_on_all(ssg, [orig = engine().cpu_id(), func = std::forward<Func>(func)] (auto& s) -> future<> {
+    return invoke_on_all(ssg, timeout, [orig = engine().cpu_id(), func = std::forward<Func>(func)] (auto& s) -> future<> {
         return engine().cpu_id() == orig ? make_ready_future<>() : futurize_apply(func, s);
     });
 }
