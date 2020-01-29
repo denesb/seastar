@@ -125,6 +125,8 @@ using smp_timeout_clock = lowres_clock;
 using smp_service_group_semaphore = basic_semaphore<named_semaphore_exception_factory, smp_timeout_clock>;
 using smp_service_group_semaphore_units = semaphore_units<named_semaphore_exception_factory, smp_timeout_clock>;
 
+static constexpr smp_timeout_clock::time_point smp_no_timeout = smp_timeout_clock::time_point::max();
+
 void init_default_smp_service_group(shard_id cpu);
 
 smp_service_group_semaphore& get_smp_service_groups_semaphore(unsigned ssg_id, shard_id t);
@@ -229,10 +231,10 @@ public:
     smp_message_queue(reactor* from, reactor* to);
     ~smp_message_queue();
     template <typename Func>
-    futurize_t<std::result_of_t<Func()>> submit(shard_id t, smp_service_group ssg, Func&& func) {
+    futurize_t<std::result_of_t<Func()>> submit(shard_id t, smp_service_group ssg, smp_timeout_clock::time_point timeout, Func&& func) {
         auto wi = std::make_unique<async_work_item<Func>>(*this, ssg, std::forward<Func>(func));
         auto fut = wi->get_future();
-        submit_item(t, std::move(wi));
+        submit_item(t, timeout, std::move(wi));
         return fut;
     }
     void start(unsigned cpuid);
@@ -243,7 +245,7 @@ public:
     void stop();
 private:
     void work();
-    void submit_item(shard_id t, std::unique_ptr<work_item> wi);
+    void submit_item(shard_id t, smp_timeout_clock::time_point timeout, std::unique_ptr<work_item> wi);
     void respond(work_item* wi);
     void move_pending();
     void flush_request_batch();
@@ -316,7 +318,7 @@ public:
                 return futurize<std::result_of_t<Func()>>::make_exception_future(std::current_exception());
             }
         } else {
-            return _qs[t][this_shard_id()].submit(t, ssg, std::forward<Func>(func));
+            return _qs[t][this_shard_id()].submit(t, ssg, smp_no_timeout, std::forward<Func>(func));
         }
     }
     /// Runs a function on a remote core.
