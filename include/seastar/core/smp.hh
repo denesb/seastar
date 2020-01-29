@@ -164,6 +164,7 @@ class smp_message_queue {
         smp_service_group ssg;
         scheduling_group sg = current_scheduling_group();
         virtual ~work_item() {}
+        virtual void fail_with(std::exception_ptr) = 0;
         virtual void process() = 0;
         virtual void complete() = 0;
     };
@@ -178,6 +179,9 @@ class smp_message_queue {
         std::exception_ptr _ex; // if !_result
         typename futurator::promise_type _promise; // used on local side
         async_work_item(smp_message_queue& queue, smp_service_group ssg, Func&& func) : work_item(ssg), _queue(queue), _func(std::move(func)) {}
+        virtual void fail_with(std::exception_ptr ex) {
+            _promise.set_exception(std::move(ex));
+        }
         virtual void process() override {
             try {
               // Run _func asynchronously and set either _result or _ex.
