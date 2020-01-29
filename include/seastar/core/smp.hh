@@ -372,11 +372,54 @@ public:
     /// The returned future resolves when all async invocations finish.
     /// The \c func may return void or future<>.
     /// Each async invocation will work with a separate copy of \c func.
+    ///
+    /// \see submit_to()
     template<typename Func>
-    static future<> invoke_on_all(Func&& func) {
+    static future<> invoke_on_all(smp_service_group ssg, smp_timeout_clock::time_point timeout, Func&& func) {
         static_assert(std::is_same<future<>, typename futurize<std::result_of_t<Func()>>::type>::value, "bad Func signature");
         return parallel_for_each(all_cpus(), [&func] (unsigned id) {
             return smp::submit_to(id, Func(func));
+        });
+    }
+    /// Invokes func on all shards.
+    ///
+    /// The returned future resolves when all async invocations finish.
+    /// The \c func may return void or future<>.
+    /// Each async invocation will work with a separate copy of \c func.
+    ///
+    /// Uses no timeout.
+    ///
+    /// \see submit_to()
+    template<typename Func>
+    static future<> invoke_on_all(smp_service_group ssg, Func&& func) {
+        return invoke_on_all(ssg, smp_no_timeout, std::forward<Func>(func));
+    }
+    /// Invokes func on all shards.
+    ///
+    /// The returned future resolves when all async invocations finish.
+    /// The \c func may return void or future<>.
+    /// Each async invocation will work with a separate copy of \c func.
+    ///
+    /// Uses default_smp_service_group() to control resource allocation.
+    /// Uses no timeout.
+    ///
+    /// \see submit_to()
+    template<typename Func>
+    static future<> invoke_on_all(Func&& func) {
+        return invoke_on_all(default_smp_service_group(), smp_no_timeout, std::forward<Func>(func));
+    }
+    /// Invokes func on all other shards.
+    ///
+    /// The returned future resolves when all async invocations finish.
+    /// The \c func may return void or future<>.
+    /// Each async invocation will work with a separate copy of \c func.
+    ///
+    /// \see submit_to()
+    template<typename Func>
+    static future<> invoke_on_others(unsigned cpu_id, smp_service_group ssg, smp_timeout_clock::time_point timeout, Func func) {
+        static_assert(std::is_same<future<>, typename futurize<std::result_of_t<Func()>>::type>::value, "bad Func signature");
+        return parallel_for_each(all_cpus(), [cpu_id, ssg, timeout, func = std::move(func)] (unsigned id) {
+            return id != cpu_id ? smp::submit_to(id, ssg, timeout, func) : make_ready_future<>();
         });
     }
     /// Invokes func on all other shards.
@@ -384,12 +427,27 @@ public:
     /// The returned future resolves when all async invocations finish.
     /// The \c func may return void or future<>.
     /// Each async invocation will work with a separate copy of \c func.
+    ///
+    /// Uses no timeout.
+    ///
+    /// \see submit_to()
+    template<typename Func>
+    static future<> invoke_on_others(unsigned cpu_id, smp_service_group ssg, Func func) {
+        return invoke_on_others(cpu_id, ssg, smp_no_timeout, std::move(func));
+    }
+    /// Invokes func on all other shards.
+    ///
+    /// The returned future resolves when all async invocations finish.
+    /// The \c func may return void or future<>.
+    /// Each async invocation will work with a separate copy of \c func.
+    ///
+    /// Uses default_smp_service_group() to control resource allocation.
+    /// Uses no timeout.
+    ///
+    /// \see submit_to()
     template<typename Func>
     static future<> invoke_on_others(unsigned cpu_id, Func func) {
-        static_assert(std::is_same<future<>, typename futurize<std::result_of_t<Func()>>::type>::value, "bad Func signature");
-        return parallel_for_each(all_cpus(), [cpu_id, func = std::move(func)] (unsigned id) {
-            return id != cpu_id ? smp::submit_to(id, func) : make_ready_future<>();
-        });
+        return invoke_on_others(cpu_id, default_smp_service_group(), smp_no_timeout, std::move(func));
     }
 private:
     static void start_all_queues();
