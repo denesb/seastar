@@ -288,6 +288,9 @@ public:
     /// \param t designates the core to run the function on (may be a remote
     ///          core or the local core).
     /// \param ssg an smp_service_group that controls resource allocation for this call.
+    /// \param timeout the timeout for this call. The timeout only applies to getting
+    ///          \c func processed on the remote core. The actual run-time of \c func is
+    ///          not limited.
     /// \param func a callable to run on core \c t.
     ///          If \c func is a temporary object, its lifetime will be
     ///          extended by moving. This movement and the eventual
@@ -297,7 +300,7 @@ public:
     /// \return whatever \c func returns, as a future<> (if \c func does not return a future,
     ///         submit_to() will wrap it in a future<>).
     template <typename Func>
-    static futurize_t<std::result_of_t<Func()>> submit_to(unsigned t, smp_service_group ssg, Func&& func) {
+    static futurize_t<std::result_of_t<Func()>> submit_to(unsigned t, smp_service_group ssg, smp_timeout_clock::time_point timeout, Func&& func) {
         using ret_type = std::result_of_t<Func()>;
         if (t == this_shard_id()) {
             try {
@@ -318,12 +321,32 @@ public:
                 return futurize<std::result_of_t<Func()>>::make_exception_future(std::current_exception());
             }
         } else {
-            return _qs[t][this_shard_id()].submit(t, ssg, smp_no_timeout, std::forward<Func>(func));
+            return _qs[t][this_shard_id()].submit(t, ssg, timeout, std::forward<Func>(func));
         }
     }
     /// Runs a function on a remote core.
     ///
+    /// Uses no timeout.
+    ///
+    /// \param t designates the core to run the function on (may be a remote
+    ///          core or the local core).
+    /// \param ssg an smp_service_group that controls resource allocation for this call.
+    /// \param func a callable to run on core \c t.
+    ///          If \c func is a temporary object, its lifetime will be
+    ///          extended by moving. This movement and the eventual
+    ///          destruction of func are both done in the _calling_ core.
+    ///          If \c func is a reference, the caller must guarantee that
+    ///          it will survive the call.
+    /// \return whatever \c func returns, as a future<> (if \c func does not return a future,
+    ///         submit_to() will wrap it in a future<>).
+    template <typename Func>
+    static futurize_t<std::result_of_t<Func()>> submit_to(unsigned t, smp_service_group ssg, Func&& func) {
+        return submit_to(t, ssg, smp_no_timeout, std::forward<Func>(func));
+    }
+    /// Runs a function on a remote core.
+    ///
     /// Uses default_smp_service_group() to control resource allocation.
+    /// Uses no timeout.
     ///
     /// \param t designates the core to run the function on (may be a remote
     ///          core or the local core).
@@ -337,7 +360,7 @@ public:
     ///         submit_to() will wrap it in a future<>).
     template <typename Func>
     static futurize_t<std::result_of_t<Func()>> submit_to(unsigned t, Func&& func) {
-        return submit_to(t, default_smp_service_group(), std::forward<Func>(func));
+        return submit_to(t, default_smp_service_group(), smp_no_timeout, std::forward<Func>(func));
     }
     static bool poll_queues();
     static bool pure_poll_queues();
