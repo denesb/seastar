@@ -26,14 +26,20 @@
 #define SEASTAR_API_LEVEL 2
 #endif
 
-#if SEASTAR_API_LEVEL >= 2
-
-#define SEASTAR_INCLUDE_API_V2 inline
-#define SEASTAR_INCLUDE_API_V1
-
+#if SEASTAR_API_LEVEL >= 3
+#define SEASTAR_INCLUDE_API_V3 inline
 #else
+#define SEASTAR_INCLUDE_API_V3
+#endif
 
+#if SEASTAR_API_LEVEL >= 2
+#define SEASTAR_INCLUDE_API_V2 inline
+#else
 #define SEASTAR_INCLUDE_API_V2
-#define SEASTAR_INCLUDE_API_V1 inline
+#endif
 
+#if SEASTAR_API_LEVEL >= 1
+#define SEASTAR_INCLUDE_API_V1 inline
+#else
+#define SEASTAR_INCLUDE_API_V1
 #endif
