@@ -95,9 +95,12 @@ struct file_output_stream_options {
     ::seastar::io_priority_class io_priority_class = default_priority_class();
 };
 
+inline namespace unsafe {
+
 /// Create an output_stream for writing starting at the position zero of a
 /// newly created file.
 /// NOTE: flush() should be the last thing to be called on a file output stream.
+[[deprecated("use safe::make_file_output_stream() instead")]]
 output_stream<char> make_file_output_stream(
         file file,
         uint64_t buffer_size = 8192);
@@ -105,12 +108,39 @@ output_stream<char> make_file_output_stream(
 /// Create an output_stream for writing starting at the position zero of a
 /// newly created file.
 /// NOTE: flush() should be the last thing to be called on a file output stream.
+[[deprecated("use safe::make_file_output_stream() instead")]]
 output_stream<char> make_file_output_stream(
         file file,
         file_output_stream_options options);
 
 /// Create a data_sink for writing starting at the position zero of a
 /// newly created file.
+[[deprecated("use safe::make_file_data_sink() instead")]]
 data_sink make_file_data_sink(file, file_output_stream_options);
+
+} // inline namespace unsafe
+
+namespace safe {
+
+/// Create an output_stream for writing starting at the position zero of a
+/// newly created file.
+/// NOTE: flush() should be the last thing to be called on a file output stream.
+/// Closes the file if the stream creation fails.
+future<output_stream<char>> make_file_output_stream(
+        file file,
+        uint64_t buffer_size = 8192) noexcept;
+
+/// Create an output_stream for writing starting at the position zero of a
+/// newly created file.
+/// NOTE: flush() should be the last thing to be called on a file output stream.
+future<output_stream<char>> make_file_output_stream(
+        file file,
+        file_output_stream_options options) noexcept;
+
+/// Create a data_sink for writing starting at the position zero of a
+/// newly created file.
+future<data_sink> make_file_data_sink(file, file_output_stream_options) noexcept;
+
+} // namespace safe
 
 }
