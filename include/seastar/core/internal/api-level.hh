@@ -21,6 +21,11 @@
 
 #pragma once
 
+// Utilities for API versioning.
+//
+// API levels are added in pairs. The odd number is for the to-be-replaced
+// symbols, while the even number is for the new version of those symbols.
+
 // For IDEs that don't see SEASTAR_API_LEVEL, generate a nice default
 #ifndef SEASTAR_API_LEVEL
 #define SEASTAR_API_LEVEL 2
@@ -35,5 +40,17 @@
 
 #define SEASTAR_INCLUDE_API_V2
 #define SEASTAR_INCLUDE_API_V1 inline
+
+#endif
+
+#if SEASTAR_API_LEVEL >= 4
+
+#define SEASTAR_INCLUDE_API_V3
+#define SEASTAR_INCLUDE_API_V4 inline
+
+#elif SEASTAR_API_LEVEL <= 3
+
+#define SEASTAR_INCLUDE_API_V3 inline
+#define SEASTAR_INCLUDE_API_V4
 
 #endif
