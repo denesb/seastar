@@ -43,7 +43,11 @@ using namespace seastar;
 
 struct writer {
     output_stream<char> out;
-    writer(file f) : out(make_file_output_stream(std::move(f))) {}
+    static future<shared_ptr<writer>> make(file f) {
+        return api_v3::make_file_output_stream(std::move(f)).then([] (output_stream<char>&& os) {
+            return make_shared<writer>(writer{std::move(os)});
+        });
+    }
 };
 
 struct reader {
@@ -58,7 +62,7 @@ SEASTAR_TEST_CASE(test_fstream) {
         // Run in background, signal when done.
         (void)open_file_dma("testfile.tmp",
                       open_flags::rw | open_flags::create | open_flags::truncate).then([sem] (file f) {
-            auto w = make_shared<writer>(std::move(f));
+          return writer::make(std::move(f)).then([sem] (shared_ptr<writer> w) {
             auto buf = static_cast<char*>(::malloc(4096));
             memset(buf, 0, 4096);
             buf[0] = '[';
@@ -103,6 +107,7 @@ SEASTAR_TEST_CASE(test_fstream) {
             }).finally([sem] () {
                 sem->signal();
             });
+          });
         });
 
     return sem->wait();
@@ -112,7 +117,7 @@ SEASTAR_TEST_CASE(test_consume_skip_bytes) {
     return seastar::async([] {
         auto f = open_file_dma("testfile.tmp",
                                open_flags::rw | open_flags::create | open_flags::truncate).get0();
-        auto w = make_lw_shared<writer>(std::move(f));
+        auto w = writer::make(std::move(f)).get0();
         auto write_block = [w] (char c, size_t size) {
             std::vector<char> vec(size, c);
             w->out.write(&vec.front(), vec.size()).get();
@@ -182,7 +187,7 @@ SEASTAR_TEST_CASE(test_fstream_unaligned) {
     // Run in background, signal when done.
     (void)open_file_dma("testfile.tmp",
                   open_flags::rw | open_flags::create | open_flags::truncate).then([sem] (file f) {
-        auto w = make_shared<writer>(std::move(f));
+      return writer::make(std::move(f)).then([sem] (shared_ptr<writer> w) {
         auto buf = static_cast<char*>(::malloc(40));
         memset(buf, 0, 40);
         buf[0] = '[';
@@ -215,6 +220,7 @@ SEASTAR_TEST_CASE(test_fstream_unaligned) {
         }).finally([sem] () {
             sem->signal();
         });
+      });
     });
 
     return sem->wait();
@@ -223,13 +229,15 @@ SEASTAR_TEST_CASE(test_fstream_unaligned) {
 future<> test_consume_until_end(uint64_t size) {
     return open_file_dma("testfile.tmp",
             open_flags::rw | open_flags::create | open_flags::truncate).then([size] (file f) {
-            return do_with(make_file_output_stream(f), [size] (output_stream<char>& out) {
+          return api_v3::make_file_output_stream(f).then([size] (output_stream<char>&& os) {
+            return do_with(std::move(os), [size] (output_stream<char>& out) {
                 std::vector<char> buf(size);
                 std::iota(buf.begin(), buf.end(), 0);
                 return out.write(buf.data(), buf.size()).then([&out] {
                    return out.flush();
                 });
-            }).then([f] {
+            });
+          }).then([f] {
                 return f.size();
             }).then([size, f] (size_t real_size) {
                 BOOST_REQUIRE_EQUAL(size, real_size);
@@ -283,7 +291,7 @@ SEASTAR_TEST_CASE(test_input_stream_esp_around_eof) {
                 | boost::adaptors::transformed([&] (int x) { return rdist(reng); }));
         auto f = open_file_dma("file.tmp",
                 open_flags::rw | open_flags::create | open_flags::truncate).get0();
-        auto out = make_file_output_stream(f);
+        auto out = api_v3::make_file_output_stream(f).get0();
         out.write(reinterpret_cast<const char*>(data.data()), data.size()).get();
         out.flush().get();
         //out.close().get();  // FIXME: closes underlying stream:?!

@@ -430,6 +430,8 @@ public:
     }
 };
 
+SEASTAR_INCLUDE_API_V2 namespace api_v2 {
+
 data_sink make_file_data_sink(file f, file_output_stream_options options) {
     return data_sink(std::make_unique<file_data_sink_impl>(std::move(f), options));
 }
@@ -437,11 +439,51 @@ data_sink make_file_data_sink(file f, file_output_stream_options options) {
 output_stream<char> make_file_output_stream(file f, size_t buffer_size) {
     file_output_stream_options options;
     options.buffer_size = buffer_size;
-    return make_file_output_stream(std::move(f), options);
+// Don't generate a deprecation warning for the unsafe functions calling each other.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    return api_v2::make_file_output_stream(std::move(f), options);
+#pragma GCC diagnostic pop
 }
 
 output_stream<char> make_file_output_stream(file f, file_output_stream_options options) {
-    return output_stream<char>(make_file_data_sink(std::move(f), options), options.buffer_size, true);
+// Don't generate a deprecation warning for the unsafe functions calling each other.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    return output_stream<char>(api_v2::make_file_data_sink(std::move(f), options), options.buffer_size, true);
+#pragma GCC diagnostic pop
+}
+
+}
+
+SEASTAR_INCLUDE_API_V3 namespace api_v3 {
+
+future<data_sink> make_file_data_sink(file f, file_output_stream_options options) noexcept {
+    try {
+        auto ds = data_sink(std::make_unique<file_data_sink_impl>(f, options));
+        return make_ready_future<data_sink>(std::move(ds));
+    } catch (...) {
+        return f.close().then_wrapped([ex = std::current_exception(), f] (future<> fut) mutable {
+            if (fut.failed()) {
+                seastar_logger.error("While handling failed construction of data_sink, caught exception: {}", fut.get_exception());
+            }
+            return make_exception_future<data_sink>(std::move(ex));
+        });
+    }
+}
+
+future<output_stream<char>> make_file_output_stream(file f, size_t buffer_size) noexcept {
+    file_output_stream_options options;
+    options.buffer_size = buffer_size;
+    return api_v3::make_file_output_stream(std::move(f), options);
+}
+
+future<output_stream<char>> make_file_output_stream(file f, file_output_stream_options options) noexcept {
+    return api_v3::make_file_data_sink(std::move(f), options).then([buffer_size = options.buffer_size] (data_sink&& ds) {
+        return output_stream<char>(std::move(ds), buffer_size, true);
+    });
+}
+
 }
 
 /*
