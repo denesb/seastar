@@ -1134,11 +1134,6 @@ SEASTAR_TEST_CASE(test_loggers) {
         proto.set_logger(&log);
         logger(dummy_addr, "Hello2");
         logger(dummy_addr, log_level::debug, "Hello3");
-        proto.set_logger([] (const sstring& str) {
-            log.info("Test: {}", str);
-        });
-        logger(dummy_addr, "Hello4");
-        logger(dummy_addr, log_level::debug, "Hello5");
         proto.set_logger(nullptr);
         logger(dummy_addr, "Hello6");
         logger(dummy_addr, log_level::debug, "Hello7");
