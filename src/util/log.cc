@@ -217,23 +217,31 @@ logger::really_do_log(log_level level, const char* fmt, const stringer* stringer
       const char* p = fmt;
       size_t n = stringers_size;
       const stringer* s = stringers;
+      const char* start = nullptr;
       while (*p != '\0') {
-        if (*p == '{' && *(p+1) == '}') {
-            p += 2;
-            if (n > 0) {
-                try {
-                    s->append(out, s->object);
-                } catch (...) {
-                    out << '<' << std::current_exception() << '>';
-                }
-                ++s;
-                --n;
-            } else {
-                out << "???";
+        if (*p == '{') {
+            start = p;
+            ++p;
+        } else if (*p == '}') {
+            if (!start) {
+                out << '}';
+                continue;
             }
+            try {
+                s->append(out, std::string_view(start, p - start), s->object);
+            } catch (...) {
+                out << '<' << std::current_exception() << '>';
+            }
+            start = nullptr;
+            ++s;
+            --n;
+            ++p;
         } else {
             out << *p++;
         }
+      }
+      if (start) {
+          out << "???";
       }
       out << "\n";
     };

@@ -82,13 +82,13 @@ class logger {
     static std::atomic<bool> _syslog;
 private:
     struct stringer {
-        void (*append)(std::ostream& os, const void* object);
+        void (*append)(std::ostream& os, std::string_view fmt, const void* object);
         const void* object;
     };
     template <typename Arg>
     stringer stringer_for(const Arg& arg) {
         return stringer{
-            [] (std::ostream& os, const void* object) {
+            [] (std::ostream& os, std::string_view fmt, const void* object) {
                 os << *static_cast<const std::remove_reference_t<Arg>*>(object);
             },
             &arg
