@@ -1470,18 +1470,20 @@ void do_dump_memory_diagnostics(std::ostream& os) {
     auto free_mem = cpu_mem.nr_free_pages * page_size;
     auto total_mem = cpu_mem.nr_pages * page_size;
     fmt::print(os, "Dumping seastar memory diagnostics\n");
-    fmt::print(os, "Used memory: {} Free memory: {} Total memory: {}\n", total_mem - free_mem, free_mem, total_mem);
+    fmt::print(os, "Used memory: {} Free memory: {} Total memory: {}\n", to_human_readable_number(total_mem - free_mem),
+            to_human_readable_number(free_mem), to_human_readable_number(total_mem));
     fmt::print(os, "Small pools:\n");
-    fmt::print(os, "objsz spansz usedobj   memory       wst%\n");
+    fmt::print(os, "{:>5} {:>6} {:>10} {:>6} {:>4}\n", "objsz", "spansz", "usedobj", "memory", "wst%");
     for (unsigned i = 0; i < cpu_mem.small_pools.nr_small_pools; i++) {
         auto& sp = cpu_mem.small_pools[i];
         auto use_count = sp._pages_in_use * page_size / sp.object_size() - sp._free_count;
         auto memory = sp._pages_in_use * page_size;
-        auto wasted_percent = memory ? sp._free_count * sp.object_size() * 100.0 / memory : 0;
-        fmt::print(os, "{} {} {} {} {}\n", sp.object_size(), sp._span_sizes.preferred * page_size, use_count, memory, wasted_percent);
+        unsigned wasted_percent = memory ? sp._free_count * sp.object_size() * 100 / memory : 0;
+        fmt::print(os, "{:>5} {:>6} {:>10}  {} {:>4}\n", sp.object_size(), sp._span_sizes.preferred * page_size, use_count,
+                to_human_readable_number(memory), wasted_percent);
     }
     fmt::print(os, "Page spans:\n");
-    fmt::print(os, "index size [B]     free [B]\n");
+    fmt::print(os, "{:>5} {:>5} {:>5}\n", "index", "size", "free");
     for (unsigned i = 0; i< cpu_mem.nr_span_lists; i++) {
         auto& span_list = cpu_mem.free_spans[i];
         auto front = span_list._front;
@@ -1491,7 +1493,7 @@ void do_dump_memory_diagnostics(std::ostream& os) {
             total += span.span_size;
             front = span.link._next;
         }
-        fmt::print(os, "{} {} {}\n", i, (1<<i) * page_size, total * page_size);
+        fmt::print(os, "{:>5} {} {}\n", i, to_human_readable_number((uint64_t(1)<<i) * page_size), to_human_readable_number(total * page_size));
     }
 }
 
