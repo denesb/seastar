@@ -1473,14 +1473,15 @@ void do_dump_memory_diagnostics(std::ostream& os) {
     fmt::print(os, "Used memory: {} Free memory: {} Total memory: {}\n", to_human_readable_number(total_mem - free_mem),
             to_human_readable_number(free_mem), to_human_readable_number(total_mem));
     fmt::print(os, "Small pools:\n");
-    fmt::print(os, "{:>5} {:>6} {:>10} {:>6} {:>4}\n", "objsz", "spansz", "usedobj", "memory", "wst%");
+    fmt::print(os, "{:>5} {:>6} {:>10} {:>6} {:>6} {:>4}\n", "objsz", "spansz", "usedobj", "memory", "unused", "wst%");
     for (unsigned i = 0; i < cpu_mem.small_pools.nr_small_pools; i++) {
         auto& sp = cpu_mem.small_pools[i];
         auto use_count = sp._pages_in_use * page_size / sp.object_size() - sp._free_count;
         auto memory = sp._pages_in_use * page_size;
-        unsigned wasted_percent = memory ? sp._free_count * sp.object_size() * 100 / memory : 0;
-        fmt::print(os, "{:>5} {:>6} {:>10}  {} {:>4}\n", sp.object_size(), sp._span_sizes.preferred * page_size, use_count,
-                to_human_readable_number(memory), wasted_percent);
+        const auto unused = sp._free_count * sp.object_size();
+        unsigned wasted_percent = memory ? unused * 100 / memory : 0;
+        fmt::print(os, "{:>5} {:>6} {:>10}  {}  {} {:>4}\n", sp.object_size(), sp._span_sizes.preferred * page_size, use_count,
+                to_human_readable_number(memory), to_human_readable_number(unused), wasted_percent);
     }
     fmt::print(os, "Page spans:\n");
     fmt::print(os, "{:>5} {:>5} {:>5}\n", "index", "size", "free");
