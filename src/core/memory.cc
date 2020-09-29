@@ -1539,6 +1539,35 @@ void do_dump_memory_diagnostics(std::ostream& os) {
     }
 }
 
+namespace internal {
+
+void* basic_emergency_allocator::do_allocate(size_t size) {
+    auto& cpu_mem = get_cpu_mem();
+    void* ptr = nullptr;
+
+    if (size <= max_small_allocation) {
+        auto idx = small_pool::size_to_idx(size);
+        auto& pool = cpu_mem.small_pools[idx];
+        assert(size <= pool.object_size());
+        ptr = pool.allocate();
+        while (!ptr && ++idx < small_pool_array::nr_small_pools) {
+            ptr = cpu_mem.small_pools[idx].allocate();
+        }
+    } else {
+         ptr = cpu_mem.allocate_large(size);
+    }
+    if (!ptr) {
+        throw std::bad_alloc();
+    }
+    return ptr;
+}
+
+void basic_emergency_allocator::do_deallocate(void* ptr) {
+    get_cpu_mem().free(ptr);
+}
+
+} // namespace internal
+
 void on_allocation_failure(size_t size) {
     if (!report_on_alloc_failure_suppressed &&
             // report even suppressed failures if trace level is enabled
