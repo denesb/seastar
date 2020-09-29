@@ -1575,9 +1575,13 @@ void on_allocation_failure(size_t size) {
                     (seastar_memory_logger.is_enabled(seastar::log_level::debug) && !abort_on_alloc_failure_suppressed))) {
         disable_report_on_alloc_failure_temporarily guard;
         seastar_memory_logger.debug("Failed to allocate {} bytes at {}", size, current_backtrace());
+#if __cplusplus > 201703L // C++20
+        std::basic_ostringstream<char, std::char_traits<char>, internal::emergency_allocator<char>> os;
+#else
         std::ostringstream os;
+#endif
         do_dump_memory_diagnostics(os);
-        seastar_memory_logger.debug(os.str().c_str());
+        seastar_memory_logger.emergency_log(log_level::debug, os.str().c_str());
     }
 
     if (!abort_on_alloc_failure_suppressed
