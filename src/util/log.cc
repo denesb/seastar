@@ -183,14 +183,12 @@ logger::~logger() {
     global_logger_registry().unregister_logger(this);
 }
 
-void
-logger::do_log(log_level level, const char* fmt, fmt::format_args args) {
-    bool is_ostream_enabled = _ostream.load(std::memory_order_relaxed);
-    bool is_syslog_enabled = _syslog.load(std::memory_order_relaxed);
-    if(!is_ostream_enabled && !is_syslog_enabled) {
+template <typename StringStream>
+void really_do_log(const sstring& name, log_level level, std::string_view msg, std::ostream* os, bool is_syslog_enabled) {
+    if(!os && !is_syslog_enabled) {
       return;
     }
-    std::ostringstream out, log;
+    StringStream out, log;
     static array_map<sstring, 20> level_map = {
             { int(log_level::debug), "DEBUG" },
             { int(log_level::info),  "INFO "  },
@@ -202,14 +200,14 @@ logger::do_log(log_level level, const char* fmt, fmt::format_args args) {
       if (local_engine) {
           out << " [shard " << this_shard_id() << "]";
       }
-      out << " " << _name << " - " << fmt::vformat(fmt, args) << "\n";
+      out << " " << name << " - " << msg << "\n";
     };
 
-    if (is_ostream_enabled) {
+    if (os) {
         out << level_map[int(level)] << " ";
         print_timestamp(out);
         print_once(out);
-        *_out << out.str();
+        *os << out.str();
     }
     if (is_syslog_enabled) {
         print_once(log);
@@ -228,6 +226,37 @@ logger::do_log(log_level level, const char* fmt, fmt::format_args args) {
         // syslog() interprets % characters, so send msg as a parameter
         auto msg = log.str();
         syslog(level_map[int(level)], "%s", msg.c_str());
+    }
+}
+
+void
+logger::do_log(log_level level, const char* fmt, fmt::format_args args) {
+    const bool is_ostream_enabled = _ostream.load(std::memory_order_relaxed);
+    const bool is_syslog_enabled = _syslog.load(std::memory_order_relaxed);
+    auto msg = fmt::vformat(fmt, args);
+    really_do_log<std::ostringstream>(_name, level, msg, is_ostream_enabled ? _out : nullptr, is_syslog_enabled);
+}
+
+void
+logger::emergency_do_log(log_level level, std::string_view msg) {
+    const bool is_ostream_enabled = _ostream.load(std::memory_order_relaxed);
+    const bool is_syslog_enabled = _syslog.load(std::memory_order_relaxed);
+#if __cplusplus > 201703L // C++20
+    using StringStream = std::basic_ostringstream<char, std::char_traits<char>, memory::internal::emergency_allocator<char>>;
+#else
+    using StringStream = std::ostringstream;
+#endif
+    really_do_log<StringStream>(_name, level, msg, is_ostream_enabled ? _out : nullptr, is_syslog_enabled);
+}
+
+void
+logger::emergency_log(log_level level, std::string_view msg) noexcept {
+    if (is_enabled(level)) {
+        try {
+            emergency_do_log(level, msg);
+        } catch (...) {
+            failed_to_log(std::current_exception());
+        }
     }
 }
 

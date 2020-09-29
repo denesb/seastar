@@ -84,6 +84,7 @@ class logger {
 private:
 
     void do_log(log_level level, const char* fmt, fmt::format_args args);
+    void emergency_do_log(log_level level, std::string_view msg);
     void failed_to_log(std::exception_ptr ex) noexcept;
 public:
     explicit logger(sstring name);
@@ -213,6 +214,24 @@ public:
     ///       this should be rare (will have to fill the pipe buffer
     ///       before syslogd can clear it) but can happen.
     static void set_syslog_enabled(bool enabled) noexcept;
+
+    /// \cond internal
+
+    /// Logs to desired level if enabled, otherwise we ignore the log line.
+    ///
+    /// Uses the emergency allocator (memory::internal::emergency_allocator)
+    /// when composing the log message. Should be only used in emergency
+    /// situations, e.g. when logging important diagnostics information under
+    /// very low memory conditions.
+    ///
+    /// NOTE: only effective with C++20.
+    /// NOTE: this is an internal API, to be used by Seastar only.
+    ///
+    /// \param msg - msg to log
+    ///
+    void emergency_log(log_level level, std::string_view msg) noexcept;
+
+    /// \endcond
 };
 
 /// \brief used to keep a static registry of loggers
