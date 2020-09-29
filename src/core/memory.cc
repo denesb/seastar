@@ -1487,7 +1487,7 @@ void do_dump_memory_diagnostics(std::ostream& os) {
             << "\n";
 
     os << "Small pools:\n";
-    os << "objsz\tspansz\tusedobj\tmemory\twst%\n";
+    os << "objsz\tspansz\tusedobj\tmemory\tunused\twst%\n";
     for (unsigned i = 0; i < cpu_mem.small_pools.nr_small_pools; i++) {
         auto& sp = cpu_mem.small_pools[i];
         if (sp.object_size() < sizeof(free_object)) {
@@ -1495,11 +1495,13 @@ void do_dump_memory_diagnostics(std::ostream& os) {
         }
         auto use_count = sp._pages_in_use * page_size / sp.object_size() - sp._free_count;
         auto memory = sp._pages_in_use * page_size;
-        auto wasted_percent = memory ? sp._free_count * sp.object_size() * 100.0 / memory : 0;
+        const auto unused = sp._free_count * sp.object_size();
+        const auto wasted_percent = memory ? unused * 100 / memory : 0;
         os << sp.object_size() << "\t"
                 << to_hr_size(sp._span_sizes.preferred * page_size) << "\t"
                 << to_hr_number(use_count) << "\t"
                 << to_hr_size(memory) << "\t"
+                << to_hr_size(unused) << "\t"
                 << unsigned(wasted_percent) << "\n";
     }
     os << "Page spans:\n";
