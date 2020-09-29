@@ -293,5 +293,56 @@ public:
     ~scoped_heap_profiling();
 };
 
+namespace internal {
+/// \cond internal
+
+class basic_emergency_allocator {
+protected:
+    void* do_allocate(size_t size);
+    void do_deallocate(void* ptr);
+};
+
+/// Allocator for emergency situations.
+///
+/// This allocator might be able to allocate further memory when the normal
+/// allocation paths start to fail. It does this by allocating objects from
+/// larger size pools, hoping some still has some empty slots. This means
+/// that there is very limited guarantees for this allocator to succeed. It is
+/// not backed by emergency reserves, when really all the memory is gone it will
+/// fail just the same. It is also very wasteful as it can allocate a 2K slot
+/// for an 8B object. So use it very sparingly and for very short lived
+/// allocations -- in emergency situations.
+///
+/// Note: Only works for small allocations.
+/// Note: this allocator implements the C++20 allocation interface.
+template <typename T>
+class emergency_allocator : private basic_emergency_allocator {
+public:
+    using value_type = T;
+    using propagate_on_container_move_assignment = std::false_type;
+    using is_always_equal = std::true_type;
+
+public:
+    T* allocate(size_t n) {
+        return reinterpret_cast<T*>(do_allocate(n * sizeof(T)));
+    }
+    void deallocate(T* ptr, size_t) {
+        // We can't use the size as the allocator can use any pool with
+        // size >= size.
+        return do_deallocate(ptr);
+    }
+
+    template <typename U>
+    friend bool operator==(const emergency_allocator<U>&, const emergency_allocator<U>&);
+};
+
+template <typename T>
+bool operator==(const emergency_allocator<T>&, const emergency_allocator<T>&) {
+    return true;
+}
+
+/// \endcond
+} // namespace internal
+
 }
 }
