@@ -1509,21 +1509,39 @@ void do_dump_memory_diagnostics(log_buf::inserter_iterator it) {
                 unsigned(wasted_percent));
     }
     fmt::format_to(it, "Page spans:\n");
-    fmt::format_to(it, "index\tsize\tfree\n");
+    fmt::format_to(it, "index\tsize\tfree\tused\tspans\n");
+
+    std::array<uint32_t, cpu_pages::nr_span_lists> span_size_histogram;
+    span_size_histogram.fill(0);
+
+    for (unsigned i = 0; i < cpu_mem.nr_pages;) {
+        const auto span_size = cpu_mem.pages[i].span_size;
+        if (!span_size) {
+            ++i;
+            continue;
+        }
+        ++span_size_histogram[log2ceil(span_size)];
+        i += span_size;
+    }
+
     for (unsigned i = 0; i< cpu_mem.nr_span_lists; i++) {
         auto& span_list = cpu_mem.free_spans[i];
         auto front = span_list._front;
-        uint32_t total = 0;
+        uint32_t free_pages = 0;
         while(front) {
             auto& span = cpu_mem.pages[front];
-            total += span.span_size;
+            free_pages += span.span_size;
             front = span.link._next;
         }
+        const auto total_spans = span_size_histogram[i];
+        const auto total_pages = total_spans * (1 << i);
         fmt::format_to(it,
-                "{}\t{}\t{}\n",
+                "{}\t{}\t{}\t{}\t{}\n",
                 i,
                 to_hr_size((uint64_t(1) << i) * page_size),
-                to_hr_size(total * page_size));
+                to_hr_size(total_pages * page_size),
+                to_hr_size((total_pages - free_pages) * page_size),
+                to_hr_number(total_spans));
     }
 }
 
