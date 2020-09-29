@@ -1437,6 +1437,35 @@ void enable_abort_on_allocation_failure() {
     abort_on_allocation_failure.store(true, std::memory_order_seq_cst);
 }
 
+struct human_readable_number {
+    uint16_t number;  // [0, 1024)
+    char size_char;
+};
+
+std::ostream& operator<<(std::ostream& os, const human_readable_number& hr_num) {
+    fmt::print(os, "{:>4}{}", hr_num.number, hr_num.size_char);
+    return os;
+}
+
+human_readable_number to_human_readable_number(const uint64_t num) {
+    const std::array<char, 6> size_chars = {'B', 'K', 'M', 'G', 'T', 'E'};
+    const uint64_t remainder_mask = 0x3ff; // 1023
+
+    if (!num) {
+        return {0, size_chars.front()};
+    }
+
+    auto res = num;
+    unsigned i = 0;
+    while (res >= 1024 && i < size_chars.size()) {
+        res = res >> 10;
+        ++i;
+    }
+    const uint16_t result = num >> (i * 10);
+    const uint16_t remainder = num & remainder_mask;
+    return {uint16_t(remainder < 512 ? result : result + 1), size_chars[i]};
+}
+
 void do_dump_memory_diagnostics(std::ostream& os) {
     auto free_mem = cpu_mem.nr_free_pages * page_size;
     auto total_mem = cpu_mem.nr_pages * page_size;
