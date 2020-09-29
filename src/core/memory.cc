@@ -1489,7 +1489,7 @@ void do_dump_memory_diagnostics(log_buf::inserter_iterator it) {
     fmt::format_to(it, "Used memory: {} Free memory: {} Total memory: {}\n", total_mem - free_mem, free_mem, total_mem);
 
     fmt::format_to(it, "Small pools:\n");
-    fmt::format_to(it, "objsz\tspansz\tusedobj\tmemory\twst%\n");
+    fmt::format_to(it, "objsz\tspansz\tusedobj\tmemory\tunused\twst%\n");
     for (unsigned i = 0; i < cpu_mem.small_pools.nr_small_pools; i++) {
         auto& sp = cpu_mem.small_pools[i];
         if (sp.object_size() < sizeof(free_object)) {
@@ -1497,13 +1497,15 @@ void do_dump_memory_diagnostics(log_buf::inserter_iterator it) {
         }
         auto use_count = sp._pages_in_use * page_size / sp.object_size() - sp._free_count;
         auto memory = sp._pages_in_use * page_size;
-        auto wasted_percent = memory ? sp._free_count * sp.object_size() * 100.0 / memory : 0;
+        const auto unused = sp._free_count * sp.object_size();
+        const auto wasted_percent = memory ? unused * 100 / memory : 0;
         fmt::format_to(it,
-                "{}\t{}\t{}\t{}\t{}\n",
+                "{}\t{}\t{}\t{}\t{}\t{}\n",
                 sp.object_size(),
                 to_hr_size(sp._span_sizes.preferred * page_size),
                 to_hr_number(use_count),
                 to_hr_size(memory),
+                to_hr_size(unused),
                 unsigned(wasted_percent));
     }
     fmt::format_to(it, "Page spans:\n");
