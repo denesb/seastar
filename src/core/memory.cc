@@ -1437,6 +1437,45 @@ void enable_abort_on_allocation_failure() {
     abort_on_allocation_failure.store(true, std::memory_order_seq_cst);
 }
 
+struct human_readable_value {
+    uint16_t value;  // [0, 1024)
+    char suffix; // 0 -> no suffix
+};
+
+std::ostream& operator<<(std::ostream& os, const human_readable_value& val) {
+    os << val.value;
+    if (val.suffix) {
+        os << val.suffix;
+    }
+    return os;
+}
+
+static human_readable_value to_human_readable_value(uint64_t value, uint64_t step_size, unsigned max_step_count, const char* const suffixes) {
+    if (!value) {
+        return {0, suffixes[0]};
+    }
+
+    uint64_t result = value;
+    uint64_t remainder = 0;
+    unsigned i = 0;
+    while (result >= step_size && i < max_step_count) {
+        remainder = result % step_size;
+        result /= step_size;
+        ++i;
+    }
+    return {uint16_t(remainder < (step_size / 2) ? result : result + 1), suffixes[i]};
+}
+
+static human_readable_value to_hr_size(uint64_t size) {
+    const std::array<char, 6> suffixes = {'B', 'K', 'M', 'G', 'T', 'E'};
+    return to_human_readable_value(size, 1024, suffixes.size(), suffixes.data());
+}
+
+static human_readable_value to_hr_number(uint64_t number) {
+    const std::array<char, 5> suffixes = {'\0', 'k', 'm', 'b', 't'};
+    return to_human_readable_value(number, 1000, suffixes.size(), suffixes.data());
+}
+
 void do_dump_memory_diagnostics(std::ostream& os) {
     auto free_mem = cpu_mem.nr_free_pages * page_size;
     auto total_mem = cpu_mem.nr_pages * page_size;
@@ -1458,13 +1497,13 @@ void do_dump_memory_diagnostics(std::ostream& os) {
         auto memory = sp._pages_in_use * page_size;
         auto wasted_percent = memory ? sp._free_count * sp.object_size() * 100.0 / memory : 0;
         os << sp.object_size() << "\t"
-                << sp._span_sizes.preferred * page_size << "\t"
-                << use_count << "\t"
-                << memory << "\t"
-                << wasted_percent << "\n";
+                << to_hr_size(sp._span_sizes.preferred * page_size) << "\t"
+                << to_hr_number(use_count) << "\t"
+                << to_hr_size(memory) << "\t"
+                << unsigned(wasted_percent) << "\n";
     }
     os << "Page spans:\n";
-    os << "index\tsize [B]\tfree [B]\n";
+    os << "index\tsize\tfree\n";
     for (unsigned i = 0; i< cpu_mem.nr_span_lists; i++) {
         auto& span_list = cpu_mem.free_spans[i];
         auto front = span_list._front;
@@ -1475,8 +1514,8 @@ void do_dump_memory_diagnostics(std::ostream& os) {
             front = span.link._next;
         }
         os << i << "\t"
-                << (uint64_t(1) << i) * page_size << "\t"
-                << total * page_size << "\n";
+                << to_hr_size((uint64_t(1) << i) * page_size) << "\t"
+                << to_hr_size(total * page_size) << "\n";
     }
 }
 
