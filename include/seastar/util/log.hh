@@ -21,6 +21,7 @@
 #pragma once
 
 #include <seastar/core/sstring.hh>
+#include <seastar/util/concepts.hh>
 #include <unordered_map>
 #include <exception>
 #include <iosfwd>
@@ -161,9 +162,29 @@ class logger {
     static std::ostream* _out;
     static std::atomic<bool> _ostream;
     static std::atomic<bool> _syslog;
+
+public:
+    class log_writer {
+    public:
+        virtual ~log_writer() = default;
+        virtual log_buf::inserter_iterator operator()(log_buf::inserter_iterator) = 0;
+    };
+    template <typename Func>
+    SEASTAR_CONCEPT(requires requires (Func fn, log_buf::inserter_iterator it) {
+        it = fn(it);
+    })
+    class lambda_log_writer : public log_writer {
+        Func _func;
+    public:
+        lambda_log_writer(Func&& func) : _func(std::forward<Func>(func)) { }
+        virtual ~lambda_log_writer() override = default;
+        virtual log_buf::inserter_iterator operator()(log_buf::inserter_iterator it) override { return _func(it); }
+    };
+
 private:
 
-    void do_log(log_level level, const char* fmt, fmt::format_args args);
+    // We can't use an std::function<> as it potentially allocates.
+    void do_log(log_level level, log_writer& writer);
     void failed_to_log(std::exception_ptr ex) noexcept;
 public:
     explicit logger(sstring name);
@@ -189,7 +210,28 @@ public:
     void log(log_level level, const char* fmt, Args&&... args) noexcept {
         if (is_enabled(level)) {
             try {
-                do_log(level, fmt, fmt::make_format_args(std::forward<Args>(args)...));
+                lambda_log_writer writer([&] (log_buf::inserter_iterator it) {
+                    return fmt::format_to(it, fmt, std::forward<Args>(args)...);
+                });
+                do_log(level, writer);
+            } catch (...) {
+                failed_to_log(std::current_exception());
+            }
+        }
+    }
+
+    /// logs to desired level if enabled, otherwise we ignore the log line
+    ///
+    /// \param writer a function which writes directly to the underlying log buffer
+    ///
+    /// This is a low level method for use cases where it is very important to
+    /// avoid any allocations. The \arg writer will be passed a
+    /// log_buf::inserter_iterator that allows it to write into the log buffer
+    /// directly, avoiding the use of any intermediary buffers.
+    void log(log_level level, log_writer& writer) noexcept {
+        if (is_enabled(level)) {
+            try {
+                do_log(level, writer);
             } catch (...) {
                 failed_to_log(std::current_exception());
             }
