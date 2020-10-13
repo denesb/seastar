@@ -86,6 +86,22 @@ private:
     void do_log(log_level level, const char* fmt, fmt::format_args args);
     void failed_to_log(std::exception_ptr ex) noexcept;
 public:
+    using clock = std::chrono::system_clock;
+
+    class throttle_control {
+        friend class logger;
+
+    private:
+        clock::time_point _next;
+
+    private:
+        bool check_and_maybe_advance();
+
+    public:
+        explicit throttle_control(std::chrono::seconds interval);
+    };
+
+public:
     explicit logger(sstring name);
     logger(logger&& x);
     ~logger();

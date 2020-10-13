@@ -126,7 +126,7 @@ static void print_real_timestamp(std::ostream& os) {
         std::string s;
     };
     static thread_local a_second this_second;
-    using clock = std::chrono::system_clock;
+    using clock = logger::clock;
     auto n = clock::now();
     auto t = clock::to_time_t(n);
     if (this_second.t != t) {
