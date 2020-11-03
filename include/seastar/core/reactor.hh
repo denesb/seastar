@@ -82,6 +82,7 @@
 #include <seastar/core/smp.hh>
 #include <seastar/core/internal/io_request.hh>
 #include <seastar/core/make_task.hh>
+#include <seastar/util/memory_diagnostics.hh>
 #include "internal/pollable_fd.hh"
 #include "internal/poll.hh"
 
@@ -550,6 +551,7 @@ public:
     task* current_task() const { return _current_task; }
 
     void add_task(task* t) noexcept {
+        memory::scoped_critical_alloc_section cag;
         auto sg = t->group();
         auto* q = _task_queues[sg._id].get();
         bool was_empty = q->_q.empty();
@@ -562,6 +564,7 @@ public:
         }
     }
     void add_urgent_task(task* t) noexcept {
+        memory::scoped_critical_alloc_section cag;
         auto sg = t->group();
         auto* q = _task_queues[sg._id].get();
         bool was_empty = q->_q.empty();

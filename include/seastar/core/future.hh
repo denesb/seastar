@@ -31,6 +31,7 @@
 #include <cstdlib>
 #include <seastar/core/function_traits.hh>
 #include <seastar/util/alloc_failure_injector.hh>
+#include <seastar/util/memory_diagnostics.hh>
 #include <seastar/util/attribute-compat.hh>
 #include <seastar/util/concepts.hh>
 #include <seastar/util/noncopyable_function.hh>
@@ -1377,6 +1378,7 @@ private:
         // can be done about it. The corresponding future is not ready
         // and we cannot break the chain. Since this function is
         // noexcept, it will call std::terminate if new throws.
+        memory::scoped_critical_alloc_section cag;
         memory::disable_failure_guard dfg;
         auto tws = new continuation<Pr, Func, Wrapper, T SEASTAR_ELLIPSIS>(std::move(pr), std::move(func), std::move(wrapper));
         // In a debug build we schedule ready futures, but not in
