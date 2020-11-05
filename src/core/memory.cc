@@ -1577,6 +1577,12 @@ scoped_critical_alloc_section::~scoped_critical_alloc_section() {
     --critical_alloc_section;
 }
 
+static thread_local noncopyable_function<void(memory_diagnostics_writer)> additional_diagnostics_producer;
+
+void set_additional_diagnostics_producer(noncopyable_function<void(memory_diagnostics_writer)> producer) {
+    additional_diagnostics_producer = std::move(producer);
+}
+
 struct human_readable_value {
     uint16_t value;  // [0, 1024)
     char suffix; // 0 -> no suffix
@@ -1627,6 +1633,12 @@ internal::log_buf::inserter_iterator do_dump_memory_diagnostics(internal::log_bu
     it = fmt::format_to(it, "Dumping seastar memory diagnostics\n");
 
     it = fmt::format_to(it, "Used memory: {} Free memory: {} Total memory: {}\n", total_mem - free_mem, free_mem, total_mem);
+
+    if (additional_diagnostics_producer) {
+        additional_diagnostics_producer([&it] (std::string_view v) mutable {
+            it = fmt::format_to(it, v);
+        });
+    }
 
     it = fmt::format_to(it, "Small pools:\n");
     it = fmt::format_to(it, "objsz\tspansz\tusedobj\tmemory\tunused\twst%\n");
@@ -1728,6 +1740,13 @@ void on_allocation_failure(size_t size) {
         seastar_logger.error("Failed to allocate {} bytes", size);
         abort();
     }
+}
+
+sstring generate_memory_diagnostics_report() {
+    internal::log_buf buf;
+    auto it = buf.back_insert_begin();
+    do_dump_memory_diagnostics(it);
+    return sstring(buf.data(), buf.size());
 }
 
 static void trigger_error_injector() {

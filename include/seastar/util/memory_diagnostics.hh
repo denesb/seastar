@@ -21,6 +21,8 @@
 
 #pragma once
 
+#include <seastar/util/noncopyable_function.hh>
+
 namespace seastar {
 namespace memory {
 
@@ -61,6 +63,27 @@ public:
     scoped_critical_alloc_section();
     ~scoped_critical_alloc_section();
 };
+
+/// \brief A functor which writes its argument into the diagnostics report.
+using memory_diagnostics_writer = noncopyable_function<void(std::string_view)>;
+
+/// \brief Set a producer of additional diagnostic information.
+///
+/// The producer will be invoked when generating the memory diagnostics report.
+/// It can be used to let the application add its own, application specific part
+/// to the report. The output of the producer will be added to the start of the
+/// report, following with the seastar-specific part.
+///
+/// \param producer - the functor to produce the additional diagnostics, specific
+///     to the application, to be added to the generated report. The producer is
+///     passed a writer functor, which it can use to add its parts to the report.
+///
+/// \note As the report is generated at a time when allocations are failing, the
+///     producer should try as hard as possible to not allocate while producing
+///     the output.
+void set_additional_diagnostics_producer(noncopyable_function<void(memory_diagnostics_writer)> producer);
+
+sstring generate_memory_diagnostics_report();
 
 } // namespace memory
 } // namespace seastar
