@@ -2226,6 +2226,27 @@ void disable_large_allocation_warning() {
     // Ignore, not supported for default allocator.
 }
 
+
+void set_dump_memory_diagnostics_on_alloc_failure_kind(alloc_failure_kind) {
+    // Ignore, not supported for default allocator.
+}
+
+void set_dump_memory_diagnostics_on_alloc_failure_kind(std::string_view) {
+    // Ignore, not supported for default allocator.
+}
+
+scoped_critical_alloc_section::scoped_critical_alloc_section() {}
+scoped_critical_alloc_section::~scoped_critical_alloc_section() {}
+
+void set_additional_diagnostics_producer(noncopyable_function<void(memory_diagnostics_writer)>) {
+    // Ignore, not supported for default allocator.
+}
+
+sstring generate_memory_diagnostics_report() {
+    // Ignore, not supported for default allocator.
+    return {};
+}
+
 }
 
 }
