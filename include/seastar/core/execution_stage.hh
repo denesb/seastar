@@ -299,6 +299,7 @@ public:
     }
 };
 
+using inheriting_concrete_execution_stage_stats = std::array<std::optional<execution_stage::stats>, max_scheduling_groups()>;
 
 /// \brief Concrete execution stage class, with support for automatic \ref scheduling_group inheritance
 ///
@@ -370,6 +371,25 @@ public:
             slot.emplace(make_stage_for_group(sg));
         }
         return (*slot)(std::move(args)...);
+    }
+
+    /// Returns summary of individual execution stage usage statistics
+    ///
+    /// \returns a vector of the stats of the individual per-scheduling group
+    ///     executation stages. The index of any element is equal to the id of
+    ///     the scheduling group it belongs to. Scheduling groups that don't
+    ///     have a respective execution stage will have their respective
+    ///     element unengaged.
+    inheriting_concrete_execution_stage_stats get_stats() const noexcept {
+        inheriting_concrete_execution_stage_stats summary{max_scheduling_groups()};
+        for (unsigned sg_id = 0; sg_id != _stage_for_group.size(); ++sg_id) {
+            if (_stage_for_group[sg_id]) {
+                summary[sg_id] = _stage_for_group[sg_id]->get_stats();
+            } else {
+                summary[sg_id] = {};
+            }
+        }
+        return summary;
     }
 };
 
