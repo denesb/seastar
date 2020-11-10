@@ -99,6 +99,7 @@ namespace seastar {
 /// kinds, see:
 /// * set_dump_memory_diagnostics_on_alloc_failure_kind()
 /// * scoped_critical_alloc_section
+/// * set_additional_diagnostics_producer()
 namespace memory {
 
 /// \cond internal
