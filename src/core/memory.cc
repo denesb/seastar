@@ -1744,6 +1744,13 @@ void on_allocation_failure(size_t size) {
     }
 }
 
+sstring generate_memory_diagnostics_report() {
+    internal::log_buf buf;
+    auto it = buf.back_insert_begin();
+    do_dump_memory_diagnostics(it);
+    return sstring(buf.data(), buf.size());
+}
+
 static void trigger_error_injector() {
     on_alloc_point();
 }
@@ -2235,6 +2242,11 @@ scoped_critical_alloc_section::~scoped_critical_alloc_section() {}
 
 void set_additional_diagnostics_producer(noncopyable_function<void(memory_diagnostics_writer)>) {
     // Ignore, not supported for default allocator.
+}
+
+sstring generate_memory_diagnostics_report() {
+    // Ignore, not supported for default allocator.
+    return {};
 }
 
 }
