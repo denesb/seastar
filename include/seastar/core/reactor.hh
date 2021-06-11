@@ -767,4 +767,6 @@ inline int hrtimer_signal() {
 
 extern logger seastar_logger;
 
+void task_histogram_flush();
+
 }

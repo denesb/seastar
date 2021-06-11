@@ -486,18 +486,21 @@ public:
     void add(const task& t) {
         ++_histogram[std::type_index(typeid(t))];
         if (!--_countdown_to_print) {
-            print();
-            _countdown_to_print = max_countdown;
-            _histogram.clear();
+            flush();
         }
     }
     void print() const {
-        seastar::fmt::print("task histogram, {:d} task types {:d} tasks\n", _histogram.size(), max_countdown - _countdown_to_print);
+        fmt::print("task histogram, {:d} task types {:d} tasks\n", _histogram.size(), max_countdown - _countdown_to_print);
         for (auto&& type_count : _histogram) {
             auto&& type = type_count.first;
             auto&& count = type_count.second;
-            seastar::fmt::print("  {:10d} {}\n", count, type.name());
+            fmt::print("  {:10d} {}\n", count, type.name());
         }
+    }
+    void flush() {
+        print();
+        _countdown_to_print = max_countdown;
+        _histogram.clear();
     }
 };
 
@@ -511,6 +514,12 @@ void task_histogram_add_task(const task& t) {
 #endif
 }
 
+}
+
+void task_histogram_flush() {
+#ifdef SEASTAR_TASK_HISTOGRAM
+    internal::this_thread_task_histogram.flush();
+#endif
 }
 
 using namespace std::chrono_literals;
