@@ -457,6 +457,8 @@ std::ostream& operator<<(std::ostream& out, const lw_shared_ptr<T>& p) {
 struct shared_ptr_count_base {
     // destructor is responsible for fully-typed deletion
     virtual ~shared_ptr_count_base() {}
+    virtual void on_instance_created(void*) { }
+    virtual void on_instance_destroyed(void*) { }
     shared_ptr_counter_type count = 0;
 };
 
@@ -487,15 +489,18 @@ class shared_ptr {
     mutable T* _p = nullptr;
 private:
     explicit shared_ptr(shared_ptr_count_for<T>* b) noexcept : _b(b), _p(&b->data) {
+        _b->on_instance_created(this);
         ++_b->count;
     }
     shared_ptr(shared_ptr_count_base* b, T* p) noexcept : _b(b), _p(p) {
         if (_b) {
+            _b->on_instance_created(this);
             ++_b->count;
         }
     }
     explicit shared_ptr(enable_shared_from_this<std::remove_const_t<T>>* p) noexcept : _b(p), _p(static_cast<T*>(p)) {
         if (_b) {
+            _b->on_instance_created(this);
             ++_b->count;
         }
     }
@@ -508,12 +513,17 @@ public:
             : _b(x._b)
             , _p(x._p) {
         if (_b) {
+            _b->on_instance_created(this);
             ++_b->count;
         }
     }
     shared_ptr(shared_ptr&& x) noexcept
             : _b(x._b)
             , _p(x._p) {
+        if (_b) {
+            _b->on_instance_created(this);
+            _b->on_instance_destroyed(&x);
+        }
         x._b = nullptr;
         x._p = nullptr;
     }
@@ -522,6 +532,7 @@ public:
             : _b(x._b)
             , _p(x._p) {
         if (_b) {
+            _b->on_instance_created(this);
             ++_b->count;
         }
     }
@@ -529,10 +540,17 @@ public:
     shared_ptr(shared_ptr<U>&& x) noexcept
             : _b(x._b)
             , _p(x._p) {
+        if (_b) {
+            _b->on_instance_created(this);
+            _b->on_instance_destroyed(&x);
+        }
         x._b = nullptr;
         x._p = nullptr;
     }
     ~shared_ptr() {
+        if (_b) {
+            _b->on_instance_destroyed(this);
+        }
         if (_b && !--_b->count) {
             delete _b;
         }
