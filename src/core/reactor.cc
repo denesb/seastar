@@ -2186,6 +2186,7 @@ void reactor::register_metrics() {
             // total_operations value:DERIVE:0:U
             sm::make_derive("cpp_exceptions", _cxx_exceptions, sm::description("Total number of C++ exceptions")),
             sm::make_derive("abandoned_failed_futures", _abandoned_failed_futures, sm::description("Total number of abandoned failed futures, futures destroyed while still containing an exception")),
+            sm::make_derive("broken_promises", _broken_promises, sm::description("Total number of broken promises, promise objects destroyed before satisfying the linked future")),
     });
 
     using namespace seastar::metrics;
