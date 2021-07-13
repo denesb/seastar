@@ -67,7 +67,7 @@ void promise_base::move_it(promise_base&& x) noexcept {
     }
 }
 
-static void set_to_broken_promise(future_state_base& state) noexcept {
+void set_to_broken_promise(future_state_base& state) noexcept {
     try {
         // Constructing broken_promise may throw (std::logic_error ctor is not noexcept).
         state.set_exception(std::make_exception_ptr(broken_promise{}));

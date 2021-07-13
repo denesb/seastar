@@ -195,6 +195,12 @@ void report_failed_future(const future_state_base& state) noexcept;
 
 void with_allow_abandoned_failed_futures(unsigned count, noncopyable_function<void ()> func);
 
+namespace internal {
+
+void set_to_broken_promise(future_state_base&) noexcept;
+
+}
+
 /// \endcond
 
 /// \brief Exception type for broken promises
@@ -203,6 +209,7 @@ void with_allow_abandoned_failed_futures(unsigned count, noncopyable_function<vo
 /// continuation is destroyed before setting any value or exception, an
 /// exception of `broken_promise` type is propagated to that abandoned
 /// continuation.
+/// \see reactor::broken_promises()
 struct broken_promise : std::logic_error {
     broken_promise();
 };
