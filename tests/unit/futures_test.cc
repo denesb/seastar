@@ -1169,6 +1169,7 @@ SEASTAR_TEST_CASE(test_custom_exception_factory_in_with_timeout) {
         later().get();
 
         check_failed_with<custom_error>(std::move(f));
+        pr.set_value(); // prevent broken promise error
     });
 }
 
