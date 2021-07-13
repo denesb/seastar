@@ -913,6 +913,9 @@ SEASTAR_THREAD_TEST_CASE(test_reload_tolerance) {
 }
 
 SEASTAR_THREAD_TEST_CASE(test_reload_by_move) {
+    // FIXME
+    scoped_allow_broken_promises _{};
+
     tmpdir tmp;
     tmpdir tmp2;
 
