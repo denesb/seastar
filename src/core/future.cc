@@ -67,7 +67,13 @@ void promise_base::move_it(promise_base&& x) noexcept {
     }
 }
 
+thread_local unsigned short allow_broken_promises = 0;
+
 void set_to_broken_promise(future_state_base& state) noexcept {
+    if (!allow_broken_promises) {
+        ++engine()._broken_promises;
+    }
+
     try {
         // Constructing broken_promise may throw (std::logic_error ctor is not noexcept).
         state.set_exception(std::make_exception_ptr(broken_promise{}));
@@ -75,6 +81,13 @@ void set_to_broken_promise(future_state_base& state) noexcept {
         state.set_exception(std::current_exception());
     }
 }
+
+} // namespace internal
+
+scoped_allow_broken_promises::scoped_allow_broken_promises() { ++internal::allow_broken_promises; }
+scoped_allow_broken_promises::~scoped_allow_broken_promises() { --internal::allow_broken_promises; }
+
+namespace internal {
 
 promise_base::promise_base(promise_base&& x) noexcept {
     move_it(std::move(x));
