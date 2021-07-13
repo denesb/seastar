@@ -64,6 +64,7 @@ SEASTAR_TEST_CASE(test_semaphore_1) {
 }
 
 SEASTAR_THREAD_TEST_CASE(test_semaphore_2) {
+    scoped_allow_broken_promises _{};
     auto sem = std::make_optional<semaphore>(0);
     int x = 0;
     auto fut = sem->wait().then([&x] {
