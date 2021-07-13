@@ -228,6 +228,9 @@ void with_allow_abandoned_failed_futures(unsigned count, noncopyable_function<vo
     engine()._abandoned_failed_futures = before;
 }
 
+scoped_allow_broken_promises::scoped_allow_broken_promises() : _broken_promises_before(engine()._broken_promises) { }
+scoped_allow_broken_promises::~scoped_allow_broken_promises() { engine()._broken_promises = _broken_promises_before; }
+
 namespace {
 class thread_wake_task final : public task {
     thread_context* _thread;

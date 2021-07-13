@@ -195,6 +195,13 @@ void report_failed_future(const future_state_base& state) noexcept;
 
 void with_allow_abandoned_failed_futures(unsigned count, noncopyable_function<void ()> func);
 
+class scoped_allow_broken_promises {
+    uint64_t _broken_promises_before;
+public:
+    scoped_allow_broken_promises();
+    ~scoped_allow_broken_promises();
+};
+
 /// \endcond
 
 /// \brief Exception type for broken promises
