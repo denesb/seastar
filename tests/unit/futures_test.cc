@@ -742,6 +742,7 @@ SEASTAR_TEST_CASE(test_parallel_for_each_waits_for_all_fibers_even_if_one_of_the
 }
 
 SEASTAR_THREAD_TEST_CASE(test_parallel_for_each_broken_promise) {
+    scoped_allow_broken_promises _{};
     auto fut = [] {
         std::vector<promise<>> v(2);
         return parallel_for_each(v, [] (promise<>& p) {
@@ -752,6 +753,7 @@ SEASTAR_THREAD_TEST_CASE(test_parallel_for_each_broken_promise) {
 }
 
 SEASTAR_THREAD_TEST_CASE(test_repeat_broken_promise) {
+    scoped_allow_broken_promises _{};
     auto get_fut = [] {
         promise<stop_iteration> pr;
         return pr.get_future();
@@ -1335,6 +1337,7 @@ SEASTAR_TEST_CASE(test_futurize_mutable) {
 }
 
 SEASTAR_THREAD_TEST_CASE(test_broken_promises) {
+    scoped_allow_broken_promises _{};
     std::optional<future<>> f;
     std::optional<future<>> f2;
     { // Broken after attaching a continuation
@@ -1368,6 +1371,7 @@ SEASTAR_THREAD_TEST_CASE(test_broken_promises) {
 }
 
 SEASTAR_TEST_CASE(test_warn_on_broken_promise_with_no_future) {
+    scoped_allow_broken_promises _{};
     // Example code where we expect a "Exceptional future ignored"
     // warning.
     promise<> p;
