@@ -137,7 +137,9 @@ void engine_exit(std::exception_ptr eptr) {
     engine().exit(1);
 }
 
-broken_promise::broken_promise() : logic_error("broken promise") { }
+broken_promise::broken_promise() : logic_error("broken promise") {
+    ++engine()._broken_promises;
+}
 
 future_state_base::future_state_base(current_exception_future_marker) noexcept
     : future_state_base(std::current_exception()) { }
