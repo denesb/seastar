@@ -69,7 +69,9 @@ void test_runner::start_thread(int ac, char** av) {
         app_template app;
         app.add_options()
             ("random-seed", bpo::value<unsigned>(), "Random number generator seed")
-            ("fail-on-abandoned-failed-futures", bpo::value<bool>()->default_value(true), "Fail the test if there are any abandoned failed futures");
+            ("fail-on-abandoned-failed-futures", bpo::value<bool>()->default_value(true), "Fail the test if there are any abandoned failed futures")
+            ("fail-on-broken-promises", bpo::value<bool>()->default_value(true), "Fail the test if there are any broken promises")
+            ;
         // We guarantee that only one thread is running.
         // We only read this after that one thread is joined, so this is safe.
         _exit_code = app.run(ac, av, [this, &app, init_outcome = init_outcome.get()] {
@@ -96,12 +98,18 @@ void test_runner::start_thread(int ac, char** av) {
                 }
               }).or_terminate();
             }).then([&app] {
+                bool fail_test = false;
                 if (engine().abandoned_failed_futures()) {
                     std::cerr << "*** " << engine().abandoned_failed_futures() << " abandoned failed future(s) detected\n";
-                    if (app.configuration()["fail-on-abandoned-failed-futures"].as<bool>()) {
-                        std::cerr << "Failing the test because fail was requested by --fail-on-abandoned-failed-futures\n";
-                        return 3;
-                    }
+                    fail_test |= app.configuration()["fail-on-abandoned-failed-futures"].as<bool>();
+                }
+                if (engine().broken_promises()) {
+                    std::cerr << "*** " << engine().broken_promises() << " broken promises detected\n";
+                    fail_test |= app.configuration()["fail-on-broken-promises"].as<bool>();
+                }
+                if (fail_test) {
+                    std::cerr << "Failing the test because fail was requested by --fail-on-abandoned-failed-futures and/or --fail-on-broken-promises\n";
+                    return 3;
                 }
                 return 0;
             });
