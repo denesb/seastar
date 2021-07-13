@@ -96,12 +96,17 @@ void test_runner::start_thread(int ac, char** av) {
                 }
               }).or_terminate();
             }).then([&app] {
+                bool fail_test = false;
                 if (engine().abandoned_failed_futures()) {
                     std::cerr << "*** " << engine().abandoned_failed_futures() << " abandoned failed future(s) detected\n";
-                    if (app.configuration()["fail-on-abandoned-failed-futures"].as<bool>()) {
-                        std::cerr << "Failing the test because fail was requested by --fail-on-abandoned-failed-futures\n";
-                        return 3;
-                    }
+                    fail_test |= app.configuration()["fail-on-abandoned-failed-futures"].as<bool>();
+                }
+                if (engine().broken_promises()) {
+                    std::cerr << "*** " << engine().broken_promises() << " broken promises detected\n";
+                }
+                if (fail_test) {
+                    std::cerr << "Failing the test because fail was requested by --fail-on-abandoned-failed-futures\n";
+                    return 3;
                 }
                 return 0;
             });
