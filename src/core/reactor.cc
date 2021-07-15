@@ -3340,8 +3340,9 @@ struct seastar_error_kinds {
     enum kind {
         internal,
         bad_alloc,
+        broken_promises,
     };
-    std::bitset<2> mask;
+    std::bitset<3> mask;
 };
 
 void validate(boost::any& v, const std::vector<std::string>& values, seastar_error_kinds*, int)
@@ -3355,6 +3356,8 @@ void validate(boost::any& v, const std::vector<std::string>& values, seastar_err
             kinds.mask[seastar_error_kinds::internal] = true;
         } else if (val == "bad-alloc") {
             kinds.mask[seastar_error_kinds::bad_alloc] = true;
+        } else if (val == "broken-promises") {
+            kinds.mask[seastar_error_kinds::broken_promises] = true;
         } else {
             throw boost::program_options::validation_error(boost::program_options::validation_error::invalid_option_value);
         }
@@ -3395,6 +3398,7 @@ reactor::get_options_description(reactor_config cfg) {
         ("abort-on-seastar-error", bpo::value<seastar_error_kinds>(), "Abort when any of the specified errors happen (multiple values can be specified), available values: "
          " internal (on_internal_error(), on_internal_error_noexcept()), "
          " bad-alloc (alloc failure in the seastar allocator), "
+         " broken-promises (abort when an unsatisfied promise is destroyed (see broken_promise exception)), "
          " all (all supported error kinds)")
         ("force-aio-syscalls", bpo::value<bool>()->default_value(false),
                 "Force io_getevents(2) to issue a system call, instead of bypassing the kernel when possible."
@@ -3908,6 +3912,9 @@ void smp::configure(boost::program_options::variables_map configuration, reactor
         }
         if (kinds.mask[seastar_error_kinds::bad_alloc]) {
             memory::enable_abort_on_allocation_failure();
+        }
+        if (kinds.mask[seastar_error_kinds::broken_promises]) {
+            set_abort_on_broken_promises(true);
         }
     }
 
