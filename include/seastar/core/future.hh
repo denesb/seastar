@@ -206,7 +206,8 @@ void set_to_broken_promise(future_state_base&) noexcept;
 /// Allow for \ref broken_promise errors.
 ///
 /// Don't increase the broken promise counter
-/// (\ref reactor::broken_promises()).
+/// (\ref reactor::broken_promises()) and also ignore
+/// \ref set_abort_on_broken_promises().
 /// Intended to be used in tests which want to produce \ref broken_promise
 /// errors intentionally, without triggering any of the diagnostics.
 class scoped_allow_broken_promises {
@@ -214,6 +215,13 @@ public:
     scoped_allow_broken_promises();
     ~scoped_allow_broken_promises();
 };
+
+/// Abort on broken promises
+///
+/// Call std::abort() when a \ref broken_promise is about to be thrown. Allows
+/// for easier debugging.
+/// \returns previous value of the flag.
+bool set_abort_on_broken_promises(bool abort);
 
 /// \brief Exception type for broken promises
 ///
@@ -223,6 +231,7 @@ public:
 /// continuation.
 /// \see reactor::broken_promises()
 /// \see scoped_allow_broken_promises
+/// \see set_abort_on_broken_promises()
 struct broken_promise : std::logic_error {
     broken_promise();
 };

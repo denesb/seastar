@@ -68,10 +68,12 @@ void promise_base::move_it(promise_base&& x) noexcept {
 }
 
 thread_local unsigned short allow_broken_promises = 0;
+thread_local bool abort_on_broken_promise = false;
 
 void set_to_broken_promise(future_state_base& state) noexcept {
     if (!allow_broken_promises) {
         ++engine()._broken_promises;
+        assert(!abort_on_broken_promise);
     }
 
     try {
@@ -86,6 +88,10 @@ void set_to_broken_promise(future_state_base& state) noexcept {
 
 scoped_allow_broken_promises::scoped_allow_broken_promises() { ++internal::allow_broken_promises; }
 scoped_allow_broken_promises::~scoped_allow_broken_promises() { --internal::allow_broken_promises; }
+
+bool set_abort_on_broken_promises(bool abort) {
+    return std::exchange(internal::abort_on_broken_promise, abort);
+}
 
 namespace internal {
 
