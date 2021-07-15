@@ -53,6 +53,7 @@
 #include <seastar/core/internal/io_desc.hh>
 #include <seastar/core/internal/buffer_allocator.hh>
 #include <seastar/core/scheduling_specific.hh>
+#include <seastar/core/on_internal_error.hh>
 #include <seastar/util/log.hh>
 #include "core/file-impl.hh"
 #include "core/reactor_backend.hh"
@@ -3335,6 +3336,33 @@ static bool kernel_supports_aio_fsync() {
     return kernel_uname().whitelisted({"4.18"});
 }
 
+struct seastar_error_kinds {
+    enum kind {
+        internal,
+        bad_alloc,
+    };
+    std::bitset<2> mask;
+};
+
+void validate(boost::any& v, const std::vector<std::string>& values, seastar_error_kinds*, int)
+{
+    seastar_error_kinds kinds;
+
+    for (const auto& val : values) {
+        if (val == "all") {
+            kinds.mask.set();
+        } else if (val == "internal") {
+            kinds.mask[seastar_error_kinds::internal] = true;
+        } else if (val == "bad-alloc") {
+            kinds.mask[seastar_error_kinds::bad_alloc] = true;
+        } else {
+            throw boost::program_options::validation_error(boost::program_options::validation_error::invalid_option_value);
+        }
+    }
+
+    v = boost::any(kinds);
+}
+
 boost::program_options::options_description
 reactor::get_options_description(reactor_config cfg) {
     namespace bpo = boost::program_options;
@@ -3363,7 +3391,11 @@ reactor::get_options_description(reactor_config cfg) {
                 "Use the kernel page cache. This disables DMA (O_DIRECT)."
                 " Useful for short-lived functional tests with a small data set.")
         ("overprovisioned", "run in an overprovisioned environment (such as docker or a laptop); equivalent to --idle-poll-time-us 0 --thread-affinity 0 --poll-aio 0")
-        ("abort-on-seastar-bad-alloc", "abort when seastar allocator cannot allocate memory")
+        ("abort-on-seastar-bad-alloc", "abort when seastar allocator cannot allocate memory, deprecated, use --abort-on-error instead")
+        ("abort-on-seastar-error", bpo::value<seastar_error_kinds>(), "Abort when any of the specified errors happen (multiple values can be specified), available values: "
+         " internal (on_internal_error(), on_internal_error_noexcept()), "
+         " bad-alloc (alloc failure in the seastar allocator), "
+         " all (all supported error kinds)")
         ("force-aio-syscalls", bpo::value<bool>()->default_value(false),
                 "Force io_getevents(2) to issue a system call, instead of bypassing the kernel when possible."
                 " This makes strace output more useful, but slows down the application")
@@ -3867,6 +3899,16 @@ void smp::configure(boost::program_options::variables_map configuration, reactor
 
     if (configuration.count("abort-on-seastar-bad-alloc")) {
         memory::enable_abort_on_allocation_failure();
+    }
+
+    if (configuration.count("abort-on-seastar-error")) {
+        auto kinds = configuration["abort-on-seastar-error"].as<seastar_error_kinds>();
+        if (kinds.mask[seastar_error_kinds::internal]) {
+            set_abort_on_internal_error(true);
+        }
+        if (kinds.mask[seastar_error_kinds::bad_alloc]) {
+            memory::enable_abort_on_allocation_failure();
+        }
     }
 
     if (configuration.count("dump-memory-diagnostics-on-alloc-failure-kind")) {
