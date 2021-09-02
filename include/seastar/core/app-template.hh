@@ -37,6 +37,26 @@ class instance;
 
 class app_template {
 public:
+    /// The mode in which to run the application.
+    enum class mode {
+        /// The usual seastar application mode, all options are exposed,
+        /// seastar tries to aggressively take over the machine for maximum
+        /// performance.
+        app,
+        /// A mode for tools that wants to achieve the opposite of the goal of a
+        /// usual seastar application is: minimum interference and resource usage.
+        /// This mode is for tools built on the (seastar-using) codebase of a
+        /// seastar application. These tools perform simple tasks and are not
+        /// performance sensitive. Furthermore they can be run next to an
+        /// already running main seastar application, which we want minimal
+        /// interference with.
+        /// In this mode all internal seastar options are hidden (but can still
+        /// be set) and their default values overwritten to values with the
+        /// above goal in mind. In particular seastar is configured to run on a
+        /// single CPU, with 100MB memory, with stall detector set to 1m and
+        /// disabling as much of the machine takeover as possible.
+        tool,
+    };
     struct config {
         /// The name of the application.
         ///
@@ -64,6 +84,8 @@ public:
         /// Specifies the default value for linux-aio I/O control blocks. This translates
         /// to the maximum number of sockets the shard can handle.
         unsigned max_networking_aio_io_control_blocks = 10000;
+        /// The application mode, see \ref app_template::mode.
+        app_template::mode mode = app_template::mode::app;
         config() {}
     };
 
@@ -76,6 +98,7 @@ private:
     std::shared_ptr<smp> _smp;
     config _cfg;
     boost::program_options::options_description _opts;
+    boost::program_options::options_description _app_opts;
     boost::program_options::options_description _opts_conf_file;
     boost::program_options::positional_options_description _pos_opts;
     std::optional<boost::program_options::variables_map> _configuration;

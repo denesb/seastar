@@ -51,24 +51,15 @@ app_template::app_template(app_template::config cfg)
     : _alien(std::make_unique<alien::instance>())
     , _smp(std::make_shared<smp>(*_alien))
     , _cfg(std::move(cfg))
-    , _opts(_cfg.name + " options")
+    , _app_opts(_cfg.name + " options")
     , _conf_reader(get_default_configuration_reader()) {
 
         if (!alien::internal::default_instance) {
             alien::internal::default_instance = _alien.get();
         }
-        _opts.add_options()
+        _app_opts.add_options()
                 ("help,h", "show help message")
                 ;
-
-        _smp->register_network_stacks();
-        _opts_conf_file.add(reactor::get_options_description(reactor_config_from_app_config(_cfg)));
-        _opts_conf_file.add(seastar::metrics::get_options_description());
-        _opts_conf_file.add(smp::get_options_description());
-        _opts_conf_file.add(scollectd::get_options_description());
-        _opts_conf_file.add(log_cli::get_options_description());
-
-        _opts.add(_opts_conf_file);
 }
 
 app_template::~app_template() = default;
@@ -94,7 +85,7 @@ void app_template::set_configuration_reader(configuration_reader conf_reader) {
 }
 
 boost::program_options::options_description& app_template::get_options_description() {
-    return _opts;
+    return _app_opts;
 }
 
 boost::program_options::options_description& app_template::get_conf_file_options_description() {
@@ -103,13 +94,13 @@ boost::program_options::options_description& app_template::get_conf_file_options
 
 boost::program_options::options_description_easy_init
 app_template::add_options() {
-    return _opts.add_options();
+    return _app_opts.add_options();
 }
 
 void
 app_template::add_positional_options(std::initializer_list<positional_option> options) {
     for (auto&& o : options) {
-        _opts.add(boost::make_shared<bpo::option_description>(o.name, o.value_semantic, o.help));
+        _app_opts.add(boost::make_shared<bpo::option_description>(o.name, o.value_semantic, o.help));
         _pos_opts.add(o.name, o.max_count);
     }
 }
@@ -147,8 +138,21 @@ app_template::run(int ac, char ** av, std::function<future<> ()>&& func) noexcep
 int
 app_template::run_deprecated(int ac, char ** av, std::function<void ()>&& func) noexcept {
 #ifdef SEASTAR_DEBUG
-    fmt::print("WARNING: debug mode. Not for benchmarking or production\n");
+    if (_cfg.mode == mode::app) {
+        fmt::print("WARNING: debug mode. Not for benchmarking or production\n");
+    }
 #endif
+    _opts.add(_app_opts);
+
+    _smp->register_network_stacks();
+    _opts_conf_file.add(reactor::get_options_description(reactor_config_from_app_config(_cfg)));
+    _opts_conf_file.add(seastar::metrics::get_options_description());
+    _opts_conf_file.add(smp::get_options_description());
+    _opts_conf_file.add(scollectd::get_options_description());
+    _opts_conf_file.add(log_cli::get_options_description());
+
+    _opts.add(_opts_conf_file);
+
     bpo::variables_map configuration;
     try {
         bpo::store(bpo::command_line_parser(ac, av)
@@ -156,7 +160,9 @@ app_template::run_deprecated(int ac, char ** av, std::function<void ()>&& func) 
                     .positional(_pos_opts)
                     .run()
             , configuration);
-        _conf_reader(configuration);
+        if (_cfg.mode == mode::app) {
+            _conf_reader(configuration);
+        }
     } catch (bpo::error& e) {
         fmt::print("error: {}\n\nTry --help.\n", e.what());
         return 2;
@@ -165,7 +171,11 @@ app_template::run_deprecated(int ac, char ** av, std::function<void ()>&& func) 
         if (!_cfg.description.empty()) {
             std::cout << _cfg.description << "\n";
         }
-        std::cout << _opts << "\n";
+        if (_cfg.mode == mode::app) {
+            std::cout << _opts << "\n";
+        } else {
+            std::cout << _app_opts << "\n";
+        }
         return 1;
     }
     if (configuration["help-loggers"].as<bool>()) {
@@ -186,6 +196,29 @@ app_template::run_deprecated(int ac, char ** av, std::function<void ()>&& func) 
     } catch (const std::runtime_error& exn) {
         std::cout << "logging configuration error: " << exn.what() << '\n';
         return 1;
+    }
+
+    if (_cfg.mode == mode::tool) {
+        auto set_if_unset = [&configuration] (const char* n, boost::program_options::variable_value v) mutable {
+            auto it = configuration.find(n);
+            if (it == configuration.end()) {
+                configuration.emplace(n, std::move(v));
+            } else if (it->second.defaulted()) {
+                it->second = std::move(v);
+            }
+        };
+        set_if_unset("blocked-reactor-notify-ms", boost::program_options::variable_value(unsigned(60000), false));
+        set_if_unset("overprovisioned", boost::program_options::variable_value());
+        set_if_unset("thread-affinity", boost::program_options::variable_value(false, false));
+        set_if_unset("idle-poll-time-us", boost::program_options::variable_value(unsigned(0), false));
+        set_if_unset("poll-aio", boost::program_options::variable_value(false, false));
+        set_if_unset("relaxed-dma", boost::program_options::variable_value(true, false));
+        set_if_unset("unsafe-bypass-fsync", boost::program_options::variable_value(true, false));
+        set_if_unset("kernel-page-cache", boost::program_options::variable_value(true, false));
+        set_if_unset("mbind", boost::program_options::variable_value(false, false));
+        set_if_unset("smp", boost::program_options::variable_value(unsigned(1), false));
+        set_if_unset("lock-memory", boost::program_options::variable_value(false, false));
+        set_if_unset("memory", boost::program_options::variable_value(std::string("100M"), false));
     }
 
     configuration.emplace("argv0", boost::program_options::variable_value(std::string(av[0]), false));
