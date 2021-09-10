@@ -47,6 +47,11 @@ reactor_config_from_app_config(app_template::config cfg) {
     return ret;
 }
 
+app_template::seastar_options::seastar_options()
+    : program_options::option_group(nullptr, "seastar")
+{
+}
+
 app_template::app_template(app_template::config cfg)
     : _alien(std::make_unique<alien::instance>())
     , _smp(std::make_shared<smp>(*_alien))
@@ -64,6 +69,7 @@ app_template::app_template(app_template::config cfg)
                 ("help-seastar", "show help message about seastar options")
                 ;
 
+        _opts.add_to(_opts_conf_file);
         _smp->register_network_stacks();
         _opts_conf_file.add(reactor::get_options_description(reactor_config_from_app_config(_cfg)));
         _opts_conf_file.add(seastar::metrics::get_options_description());
@@ -75,6 +81,10 @@ app_template::app_template(app_template::config cfg)
 }
 
 app_template::~app_template() = default;
+
+const app_template::seastar_options& app_template::options() const {
+    return _opts;
+}
 
 app_template::configuration_reader app_template::get_default_configuration_reader() {
     return [this] (bpo::variables_map& configuration) {
@@ -198,6 +208,8 @@ app_template::run_deprecated(int ac, char ** av, std::function<void ()>&& func) 
         std::cout << "logging configuration error: " << exn.what() << '\n';
         return 1;
     }
+
+    _opts.extract_from(configuration);
 
     configuration.emplace("argv0", boost::program_options::variable_value(std::string(av[0]), false));
     try {
