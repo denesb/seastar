@@ -47,6 +47,11 @@ reactor_config_from_app_config(app_template::config cfg) {
     return ret;
 }
 
+app_template::seastar_options::seastar_options()
+    : program_options::option_group(nullptr, "seastar")
+{
+}
+
 app_template::app_template(app_template::config cfg)
     : _alien(std::make_unique<alien::instance>())
     , _smp(std::make_shared<smp>(*_alien))
