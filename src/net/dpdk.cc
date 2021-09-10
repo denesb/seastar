@@ -43,6 +43,7 @@
 #include <seastar/core/dpdk_rte.hh>
 #include <seastar/net/dpdk.hh>
 #include <seastar/net/toeplitz.hh>
+#include <seastar/net/native-stack.hh>
 
 #include <getopt.h>
 #include <malloc.h>
@@ -494,7 +495,7 @@ public:
 
     virtual uint16_t hw_queues_count() override { return _num_queues; }
     virtual future<> link_ready() override { return _link_ready_promise.get_future(); }
-    virtual std::unique_ptr<qp> init_local_queue(boost::program_options::variables_map opts, uint16_t qid) override;
+    virtual std::unique_ptr<qp> init_local_queue(const program_options::option_group& opts, uint16_t qid) override;
     virtual unsigned hash2qid(uint32_t hash) override {
         assert(_redir_table.size());
         return _redir_table[hash & (_redir_table.size() - 1)];
@@ -2242,10 +2243,12 @@ void dpdk_device::set_rss_table()
     }
 }
 
-std::unique_ptr<qp> dpdk_device::init_local_queue(boost::program_options::variables_map opts, uint16_t qid) {
+std::unique_ptr<qp> dpdk_device::init_local_queue(const program_options::option_group& opts, uint16_t qid) {
+    auto net_opts = dynamic_cast<const net::native_stack_options*>(&opts);
+    assert(net_opts);
 
     std::unique_ptr<qp> qp;
-    if (opts.count("hugepages")) {
+    if (net_opts->_hugepages) {
         qp = std::make_unique<dpdk_qp<true>>(this, qid,
                                  _stats_plugin_name + "-" + _stats_plugin_inst);
     } else {
@@ -2296,21 +2299,14 @@ std::unique_ptr<net::device> create_dpdk_net_device(
 }
 
 
-boost::program_options::options_description
-get_dpdk_net_options_description()
-{
-    boost::program_options::options_description opts(
-            "DPDK net options");
-
-    opts.add_options()
-        ("dpdk-port-index",
-                boost::program_options::value<unsigned>()->default_value(0),
-                "DPDK Port Index");
-
-    opts.add_options()
-        ("hw-fc",
-                boost::program_options::value<std::string>()->default_value("on"),
-                "Enable HW Flow Control (on / off)");
+net::dpdk_options::dpdk_options(program_options::option_group* parent_group)
+    : program_options::option_group(parent_group, "DPDK net options")
+    , dpdk_port_index(*this, "dpdk-port-index",
+                0,
+                "DPDK Port Index")
+    , hw_fc(*this, "hw-fc",
+                "on",
+                "Enable HW Flow Control (on / off)")
 #if 0
     opts.add_options()
         ("csum-offload",
@@ -2324,7 +2320,14 @@ get_dpdk_net_options_description()
                 "Enable UDP fragmentation offload feature (on / off)")
         ;
 #endif
-    return opts;
+{
+}
+
+net::dpdk_options::dpdk_options(program_options::option_group* parent_group, program_options::unused u)
+    : program_options::option_group(parent_group, "DPDK net options", u)
+    , dpdk_port_index(*this, "dpdk-port-index", u)
+    , hw_fc(*this, "hw-fc", u)
+{
 }
 
 }
