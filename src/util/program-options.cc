@@ -93,6 +93,90 @@ std::istream& operator>>(std::istream& is, string_map& ss) {
     return is;
 }
 
+option_group::option_group(option_group* parent, std::string name)
+    : _parent(parent), _used(true), _name(std::move(name)) {
+    if (_parent) {
+        _parent->_subgroups.push_back(*this);
+    }
+}
+
+option_group::option_group(option_group* parent, std::string name, unused)
+    : _parent(parent), _used(false), _name(std::move(name)) {
+    if (_parent) {
+        _parent->_subgroups.push_back(*this);
+    }
+}
+
+option_group::option_group(option_group&& o)
+    : _parent(o._parent), _used(o._used), _name(std::move(o._name))
+{
+    for (auto& val : o._values) {
+        val._group = this;
+    }
+    for (auto& grp : o._subgroups) {
+        grp._parent = this;
+    }
+    unlink();
+    if (_parent) {
+        _parent->_subgroups.push_back(*this);
+    }
+}
+
+bpo::options_description option_group::as_options_description() {
+    bpo::options_description opts(_name);
+    add_to(opts);
+    return opts;
+}
+
+void option_group::add_to(boost::program_options::options_description& opts) {
+    if (!_used) {
+        return;
+    }
+    if (_values.empty()) {
+        for (auto& grp : _subgroups) {
+            grp.add_to(opts);
+        }
+    } else {
+        bpo::options_description group_opts(_name.c_str());
+        for (auto& val : _values) {
+            if (val._used) {
+                val.add_to(group_opts);
+            }
+        }
+        for (auto& grp : _subgroups) {
+            if (grp._used) {
+                grp.add_to(group_opts);
+            }
+        }
+        opts.add(group_opts);
+    }
+}
+
+void option_group::extract_from(const boost::program_options::variables_map& vm) {
+    if (!_used) {
+        return;
+    }
+    for (auto& val : _values) {
+        val.extract_from(vm);
+    }
+    for (auto& grp : _subgroups) {
+        grp.extract_from(vm);
+    }
+}
+
+basic_value::basic_value(option_group& group, bool used, std::string name, std::string short_name, std::string description)
+    : _group(&group), _used(used), _name(std::move(name)), _short_name(std::move(short_name)), _description(std::move(description))
+{
+    _group->_values.push_back(*this);
+}
+
+basic_value::basic_value(basic_value&& o)
+    : _group(o._group), _used(o._used), _name(std::move(o._name)), _short_name(std::move(o._short_name)), _description(std::move(o._description))
+{
+    unlink();
+    _group->_values.push_back(*this);
+}
+
 }
 
 }
