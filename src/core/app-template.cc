@@ -28,6 +28,7 @@
 #include <seastar/core/print.hh>
 #include <seastar/util/log.hh>
 #include <seastar/util/log-cli.hh>
+#include <seastar/net/native-stack.hh>
 #include <boost/program_options.hpp>
 #include <boost/make_shared.hpp>
 #include <fstream>
@@ -36,6 +37,8 @@
 namespace seastar {
 
 namespace bpo = boost::program_options;
+
+using namespace std::chrono_literals;
 
 static
 reactor_config
@@ -49,6 +52,7 @@ reactor_config_from_app_config(app_template::config cfg) {
 
 app_template::seastar_options::seastar_options()
     : program_options::option_group(nullptr, "seastar")
+    , reactor_opts(this)
 {
 }
 
@@ -69,9 +73,9 @@ app_template::app_template(app_template::config cfg)
                 ("help-seastar", "show help message about seastar options")
                 ;
 
+        _opts.reactor_opts.task_quota_ms.set_default_value(cfg.default_task_quota / 1ms);
+        _opts.reactor_opts.max_networking_io_control_blocks.set_default_value(cfg.max_networking_aio_io_control_blocks);
         _opts.add_to(_opts_conf_file);
-        _smp->register_network_stacks();
-        _opts_conf_file.add(reactor::get_options_description(reactor_config_from_app_config(_cfg)));
         _opts_conf_file.add(seastar::metrics::get_options_description());
         _opts_conf_file.add(smp::get_options_description());
         _opts_conf_file.add(scollectd::get_options_description());
@@ -211,9 +215,13 @@ app_template::run_deprecated(int ac, char ** av, std::function<void ()>&& func) 
 
     _opts.extract_from(configuration);
 
-    configuration.emplace("argv0", boost::program_options::variable_value(std::string(av[0]), false));
+    _opts.reactor_opts._argv0 = std::string(av[0]);
+    if (auto* native_stack = dynamic_cast<net::native_stack_options*>(_opts.reactor_opts.network_stack.get_selected_candidate_opts())) {
+        native_stack->_hugepages = configuration.count("hugepages");
+    }
+
     try {
-        _smp->configure(configuration, reactor_config_from_app_config(_cfg));
+        _smp->configure(configuration, _opts.reactor_opts, reactor_config_from_app_config(_cfg));
     } catch (...) {
         std::cerr << "Could not initialize seastar: " << std::current_exception() << std::endl;
         return 1;
