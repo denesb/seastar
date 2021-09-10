@@ -459,28 +459,67 @@ log_level parse_log_level(const sstring& s) {
 }
 
 bpo::options_description get_options_description() {
-    bpo::options_description opts("Logging options");
+    return options(nullptr).as_options_description();
+}
 
-    opts.add_options()
-            ("default-log-level",
-             bpo::value<sstring>()->default_value("info"),
+std::vector<logger_log_level_mapping_policy::raw_type> logger_log_level_mapping_policy::target_to_raw(const logger_log_level_mapping_policy::target_type& v) {
+    std::vector<logger_log_level_mapping_policy::raw_type> ret;
+    for (const auto& e : v) {
+        ret.push_back(format("{}={}", e.first, e.second));
+    }
+    return ret;
+}
+
+static void parse_map_associations(const std::string& v, log_level_map& ss) {
+    static const std::regex colon(":");
+
+    std::sregex_token_iterator s(v.begin(), v.end(), colon, -1);
+    const std::sregex_token_iterator e;
+    while (s != e) {
+        const sstring p = std::string(*s++);
+
+        const auto i = p.find('=');
+        if (i == sstring::npos) {
+            throw bpo::invalid_option_value(p);
+        }
+
+        auto k = p.substr(0, i);
+        auto v = p.substr(i + 1, p.size());
+        ss[std::move(k)] = parse_log_level(v);
+    };
+}
+
+logger_log_level_mapping_policy::target_type logger_log_level_mapping_policy::raw_to_target(const std::vector<raw_type>& v) {
+    log_level_map map;
+    for (const auto& e : v) {
+        parse_map_associations(e, map);
+    }
+    return map;
+}
+
+options::options(program_options::option_group* parent_group)
+    : program_options::option_group(parent_group, "Logging options")
+    , default_log_level(*this, "default-log-level",
+             log_level::info,
+             program_options::enum_mapping_policy<log_level>({{log_level::error, "error"}, {log_level::warn, "warn"}, {log_level::info, "info"}, {log_level::debug, "debug"}, {log_level::trace, "trace"}}),
              "Default log level for log messages. Valid values are trace, debug, info, warn, error."
-            )
-            ("logger-log-level",
-             bpo::value<program_options::string_map>()->default_value({}),
+             )
+    , logger_log_level(*this, "logger-log-level",
+             {{}},
              "Map of logger name to log level. The format is \"NAME0=LEVEL0[:NAME1=LEVEL1:...]\". "
              "Valid logger names can be queried with --help-loggers. "
              "Valid values for levels are trace, debug, info, warn, error. "
              "This option can be specified multiple times."
             )
-            ("logger-stdout-timestamps", bpo::value<logger_timestamp_style>()->default_value(logger_timestamp_style::real),
+    , logger_stdout_timestamps(*this, "logger-stdout-timestamps", logger_timestamp_style::real,
+            program_options::enum_mapping_policy<logger_timestamp_style>({{logger_timestamp_style::none, "none"}, {logger_timestamp_style::boot, "boot"}, {logger_timestamp_style::real, "real"}}),
                     "Select timestamp style for stdout logs: none|boot|real")
-            ("log-to-stdout", bpo::value<bool>()->default_value(true), "Send log output to output stream, as selected by --logger-ostream-type")
-            ("logger-ostream-type", bpo::value<logger_ostream_type>()->default_value(logger_ostream_type::stderr), "Send log output to: none|stdout|stderr")
-            ("log-to-syslog", bpo::value<bool>()->default_value(false), "Send log output to syslog.")
-            ("help-loggers", bpo::bool_switch(), "Print a list of logger names and exit.");
-
-    return opts;
+    , log_to_stdout(*this, "log-to-stdout", true, "Send log output to output stream, as selected by --logger-ostream-type")
+    , logger_ostream_type(*this, "logger-ostream-type", logger_ostream_type::stderr,
+            program_options::enum_mapping_policy<seastar::logger_ostream_type>({{logger_ostream_type::none, "none"}, {logger_ostream_type::stdout, "stdout"}, {logger_ostream_type::stderr, "stderr"}}),
+            "Send log output to: none|stdout|stderr")
+    , log_to_syslog(*this, "log-to-syslog", false, "Send log output to syslog.")
+{
 }
 
 void print_available_loggers(std::ostream& os) {
@@ -496,18 +535,19 @@ void print_available_loggers(std::ostream& os) {
 }
 
 logging_settings extract_settings(const boost::program_options::variables_map& vars) {
-    const auto& raw_levels = vars["logger-log-level"].as<program_options::string_map>();
+    options opts(nullptr);
+    opts.extract_from(vars);
+    return extract_settings(opts);
+}
 
-    std::unordered_map<sstring, log_level> levels;
-    parse_logger_levels(raw_levels, std::inserter(levels, levels.begin()));
-
+logging_settings extract_settings(const options& opts) {
     return logging_settings{
-        std::move(levels),
-        parse_log_level(vars["default-log-level"].as<sstring>()),
-        vars["log-to-stdout"].as<bool>(),
-        vars["log-to-syslog"].as<bool>(),
-        vars["logger-stdout-timestamps"].as<logger_timestamp_style>(),
-        vars["logger-ostream-type"].as<logger_ostream_type>(),
+        opts.logger_log_level.get_value(),
+        opts.default_log_level.get_value(),
+        opts.log_to_stdout.get_value(),
+        opts.log_to_syslog.get_value(),
+        opts.logger_stdout_timestamps.get_value(),
+        opts.logger_ostream_type.get_value(),
     };
 }
 

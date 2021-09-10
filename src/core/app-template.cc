@@ -56,6 +56,7 @@ app_template::seastar_options::seastar_options()
     , metrics_opts(this)
     , smp_opts(this)
     , scollectd_opts(this)
+    , log_opts(this)
 {
 }
 
@@ -75,11 +76,13 @@ app_template::app_template(app_template::config cfg)
         _app_opts.add_options()
                 ("help-seastar", "show help message about seastar options")
                 ;
+        _app_opts.add_options()
+                ("help-loggers", "print a list of logger names and exit")
+                ;
 
         _opts.reactor_opts.task_quota_ms.set_default_value(cfg.default_task_quota / 1ms);
         _opts.reactor_opts.max_networking_io_control_blocks.set_default_value(cfg.max_networking_aio_io_control_blocks);
         _opts.add_to(_opts_conf_file);
-        _opts_conf_file.add(log_cli::get_options_description());
 
         _seastar_opts.add(_opts_conf_file);
 }
@@ -193,7 +196,7 @@ app_template::run_deprecated(int ac, char ** av, std::function<void ()>&& func) 
         std::cout << _seastar_opts << "\n";
         return 1;
     }
-    if (configuration["help-loggers"].as<bool>()) {
+    if (configuration.count("help-loggers")) {
         log_cli::print_available_loggers(std::cout);
         return 1;
     }
@@ -207,7 +210,7 @@ app_template::run_deprecated(int ac, char ** av, std::function<void ()>&& func) 
 
     // Needs to be before `smp::configure()`.
     try {
-        apply_logging_settings(log_cli::extract_settings(configuration));
+        apply_logging_settings(log_cli::extract_settings(_opts.log_opts));
     } catch (const std::runtime_error& exn) {
         std::cout << "logging configuration error: " << exn.what() << '\n';
         return 1;

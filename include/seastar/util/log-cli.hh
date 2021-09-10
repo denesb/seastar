@@ -45,6 +45,55 @@ namespace log_cli {
 ///
 boost::program_options::options_description get_options_description();
 
+using log_level_map = std::unordered_map<sstring, log_level>;
+struct logger_log_level_mapping_policy {
+    using is_multi_value = std::true_type;
+    using target_type = log_level_map;
+    using raw_type = std::string;
+
+    std::vector<raw_type> target_to_raw(const target_type& v);
+    target_type raw_to_target(const std::vector<raw_type>& v);
+};
+
+/// Logging configuration.
+struct options : public program_options::option_group {
+    /// \brief Default log level for log messages.
+    ///
+    /// Valid values are trace, debug, info, warn, error.
+    /// Default: \p info
+    /// \see \ref log_level.
+    program_options::value<log_level, program_options::enum_mapping_policy<log_level>> default_log_level;
+    /// \brief Map of logger name to log level.
+    ///
+    /// The format is `NAME0=LEVEL0[:NAME1=LEVEL1:...]`.
+    /// Valid logger names can be queried with \p --help-loggers.
+    /// This option can be specified multiple times.
+    program_options::value<log_level_map, logger_log_level_mapping_policy> logger_log_level;
+    /// Select timestamp style for stdout logs.
+    ///
+    /// Default: \p real.
+    /// \see logger_timestamp_style.
+    program_options::value<logger_timestamp_style, program_options::enum_mapping_policy<logger_timestamp_style>> logger_stdout_timestamps;
+    /// \brief Send log output to output stream.
+    ///
+    /// As selected by \ref logger_ostream_type.
+    /// Default: \p true.
+    program_options::value<bool> log_to_stdout;
+    /// Send log output to.
+    ///
+    /// Default: \p stderr.
+    /// \see \ref seastar::logger_ostream_type.
+    program_options::value<seastar::logger_ostream_type, program_options::enum_mapping_policy<seastar::logger_ostream_type>> logger_ostream_type;
+    /// Send log output to syslog.
+    ///
+    /// Default: \p false.
+    program_options::value<bool> log_to_syslog;
+
+    /// \cond internal
+    options(program_options::option_group* parent_group);
+    /// \endcond
+};
+
 ///
 /// \brief Print a human-friendly list of the available loggers.
 ///
@@ -72,6 +121,11 @@ void parse_logger_levels(const program_options::string_map& levels, OutputIter o
 /// \brief Extract CLI options into a logging configuration.
 //
 logging_settings extract_settings(const boost::program_options::variables_map&);
+
+///
+/// \brief Extract \ref options into a logging configuration.
+///
+logging_settings extract_settings(const options&);
 
 }
 
