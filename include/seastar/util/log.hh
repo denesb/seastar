@@ -70,6 +70,12 @@ namespace seastar {
 class logger;
 class logger_registry;
 
+enum class logger_timestamp_style {
+    none,
+    boot,
+    real,
+};
+
 /// \brief Logger class for ostream or syslog.
 ///
 /// Java style api for logging.
@@ -87,6 +93,7 @@ class logger {
     static std::ostream* _out;
     static std::atomic<bool> _ostream;
     static std::atomic<bool> _syslog;
+    static std::atomic<logger_timestamp_style> _timestamp_style;
 
 public:
     class log_writer {
@@ -393,6 +400,9 @@ public:
     ///       this should be rare (will have to fill the pipe buffer
     ///       before syslogd can clear it) but can happen.
     static void set_syslog_enabled(bool enabled) noexcept;
+
+    /// Set the logger timestamp style. default is real.
+    static void set_logger_timestamp_style(logger_timestamp_style timestamp_style) noexcept;
 };
 
 /// \brief used to keep a static registry of loggers
@@ -447,12 +457,6 @@ public:
 };
 
 logger_registry& global_logger_registry();
-
-enum class logger_timestamp_style {
-    none,
-    boot,
-    real,
-};
 
 enum class logger_ostream_type {
     none,

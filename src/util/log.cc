@@ -182,7 +182,7 @@ static internal::log_buf::inserter_iterator print_real_timestamp(internal::log_b
     return fmt::format_to(it, "{},{:03d}", this_second.s, ms);
 }
 
-static internal::log_buf::inserter_iterator (*print_timestamp)(internal::log_buf::inserter_iterator) = print_no_timestamp;
+static internal::log_buf::inserter_iterator (*print_timestamp)(internal::log_buf::inserter_iterator) = print_real_timestamp;
 
 const std::map<log_level, sstring> log_level_names = {
         { log_level::trace, "trace" },
@@ -215,6 +215,7 @@ std::istream& operator>>(std::istream& in, log_level& level) {
 std::ostream* logger::_out = &std::cerr;
 std::atomic<bool> logger::_ostream = { true };
 std::atomic<bool> logger::_syslog = { false };
+std::atomic<logger_timestamp_style> logger::_timestamp_style = { logger_timestamp_style::real };
 
 logger::logger(sstring name) : _name(std::move(name)) {
     global_logger_registry().register_logger(this);
@@ -334,6 +335,24 @@ logger::set_syslog_enabled(bool enabled) noexcept {
     _syslog.store(enabled, std::memory_order_relaxed);
 }
 
+void
+logger::set_logger_timestamp_style(logger_timestamp_style timestamp_style) noexcept {
+    _timestamp_style.store(timestamp_style);
+    switch (_timestamp_style.load(std::memory_order_relaxed)) {
+    case logger_timestamp_style::none:
+        print_timestamp = print_no_timestamp;
+        break;
+    case logger_timestamp_style::boot:
+        print_timestamp = print_boot_timestamp;
+        break;
+    case logger_timestamp_style::real:
+        print_timestamp = print_real_timestamp;
+        break;
+    default:
+        break;
+    }
+}
+
 bool logger::is_shard_zero() noexcept {
     return this_shard_id() == 0;
 }
@@ -415,19 +434,7 @@ void apply_logging_settings(const logging_settings& s) {
     }
     logger::set_syslog_enabled(s.syslog_enabled);
 
-    switch (s.stdout_timestamp_style) {
-    case logger_timestamp_style::none:
-        print_timestamp = print_no_timestamp;
-        break;
-    case logger_timestamp_style::boot:
-        print_timestamp = print_boot_timestamp;
-        break;
-    case logger_timestamp_style::real:
-        print_timestamp = print_real_timestamp;
-        break;
-    default:
-        break;
-    }
+    logger::set_logger_timestamp_style(s.stdout_timestamp_style);
 }
 
 sstring pretty_type_name(const std::type_info& ti) {
