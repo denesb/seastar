@@ -504,7 +504,7 @@ struct logging_settings final {
 
 /// Shortcut for configuring the logging system all at once.
 ///
-void apply_logging_settings(const logging_settings&);
+void apply_logging_settings(const logging_settings&, conflict_resolution_policy p = conflict_resolution_policy::new_overwrites_existing);
 
 /// \cond internal
 

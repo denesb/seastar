@@ -412,10 +412,10 @@ logger_registry::moved(logger* from, logger* to) {
     _loggers[from->name()] = to;
 }
 
-static void apply_log_levels(const std::unordered_map<sstring, log_level>& logger_levels) {
+static void apply_log_levels(const std::unordered_map<sstring, log_level>& logger_levels, conflict_resolution_policy p) {
     for (const auto& pair : logger_levels) {
         try {
-            global_logger_registry().set_logger_level(pair.first, pair.second);
+            global_logger_registry().set_logger_level(pair.first, pair.second, p);
         } catch (const std::out_of_range&) {
             throw std::runtime_error(
                         seastar::format("Unknown logger '{}'. Use --help-loggers to list available loggers.",
@@ -424,29 +424,29 @@ static void apply_log_levels(const std::unordered_map<sstring, log_level>& logge
     }
 }
 
-static void apply_ostream(logger_ostream_type logger_ostream, bool stdout_enabled) {
+static void apply_ostream(logger_ostream_type logger_ostream, bool stdout_enabled, conflict_resolution_policy p) {
     logger_ostream_type os = stdout_enabled ? logger_ostream : logger_ostream_type::none;
     switch (os) {
     case logger_ostream_type::none:
-        logger::set_ostream_enabled(false);
+        logger::set_ostream_enabled(false, p);
         break;
     case logger_ostream_type::stdout:
-        logger::set_ostream(std::cout);
-        logger::set_ostream_enabled(true);
+        logger::set_ostream(std::cout, p);
+        logger::set_ostream_enabled(true, p);
         break;
     case logger_ostream_type::stderr:
-        logger::set_ostream(std::cerr);
-        logger::set_ostream_enabled(true);
+        logger::set_ostream(std::cerr, p);
+        logger::set_ostream_enabled(true, p);
         break;
     }
 }
 
-void apply_logging_settings(const logging_settings& s) {
-    global_logger_registry().set_all_loggers_level(s.default_level);
-    apply_log_levels(s.logger_levels);
-    apply_ostream(s.logger_ostream, s.stdout_enabled);
-    logger::set_syslog_enabled(s.syslog_enabled);
-    logger::set_logger_timestamp_style(s.stdout_timestamp_style);
+void apply_logging_settings(const logging_settings& s, conflict_resolution_policy p) {
+    global_logger_registry().set_all_loggers_level(s.default_level, p);
+    apply_log_levels(s.logger_levels, p);
+    apply_ostream(s.logger_ostream, s.stdout_enabled, p);
+    logger::set_syslog_enabled(s.syslog_enabled, p);
+    logger::set_logger_timestamp_style(s.stdout_timestamp_style, p);
 }
 
 sstring pretty_type_name(const std::type_info& ti) {
