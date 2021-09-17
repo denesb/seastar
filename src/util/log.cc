@@ -212,10 +212,11 @@ std::istream& operator>>(std::istream& in, log_level& level) {
     return in;
 }
 
-std::ostream* logger::_out = &std::cerr;
-std::atomic<bool> logger::_ostream = { true };
-std::atomic<bool> logger::_syslog = { false };
-std::atomic<logger_timestamp_style> logger::_timestamp_style = { logger_timestamp_style::real };
+std::mutex logger::_global_config_mutex;
+config_value<std::ostream*> logger::_out(&std::cerr);
+config_value<bool> logger::_ostream(true);
+config_value<bool> logger::_syslog(false);
+config_value<logger_timestamp_style> logger::_timestamp_style(logger_timestamp_style::real);
 
 logger::logger(sstring name) : _name(std::move(name)) {
     global_logger_registry().register_logger(this);
@@ -268,14 +269,15 @@ logger::do_log(log_level level, log_writer& writer) {
     };
 
     if (is_ostream_enabled) {
+        auto os = _out.load(std::memory_order_relaxed);
         internal::log_buf buf(static_log_buf.data(), static_log_buf.size());
         auto it = buf.back_insert_begin();
         it = fmt::format_to(it, "{} ", level_map[int(level)]);
         it = print_timestamp(it);
         it = print_once(it);
         *it++ = '\n';
-        *_out << buf.view();
-        _out->flush();
+        *os << buf.view();
+        os->flush();
     }
     if (is_syslog_enabled) {
         internal::log_buf buf(static_log_buf.data(), static_log_buf.size());
@@ -316,28 +318,33 @@ void logger::failed_to_log(std::exception_ptr ex, format_info fmt) noexcept
 }
 
 void
-logger::set_ostream(std::ostream& out) noexcept {
-    _out = &out;
+logger::set_ostream(std::ostream& out, conflict_resolution_policy p) noexcept {
+    auto _ = std::lock_guard(_global_config_mutex);
+    _out.update(&out, p);
 }
 
 void
-logger::set_ostream_enabled(bool enabled) noexcept {
-    _ostream.store(enabled, std::memory_order_relaxed);
+logger::set_ostream_enabled(bool enabled, conflict_resolution_policy p) noexcept {
+    auto _ = std::lock_guard(_global_config_mutex);
+    _ostream.update(enabled, p);
 }
 
 void
-logger::set_stdout_enabled(bool enabled) noexcept {
-    _ostream.store(enabled, std::memory_order_relaxed);
+logger::set_stdout_enabled(bool enabled, conflict_resolution_policy p) noexcept {
+    auto _ = std::lock_guard(_global_config_mutex);
+    _ostream.update(enabled, p);
 }
 
 void
-logger::set_syslog_enabled(bool enabled) noexcept {
-    _syslog.store(enabled, std::memory_order_relaxed);
+logger::set_syslog_enabled(bool enabled, conflict_resolution_policy p) noexcept {
+    auto _ = std::lock_guard(_global_config_mutex);
+    _syslog.update(enabled, p);
 }
 
 void
-logger::set_logger_timestamp_style(logger_timestamp_style timestamp_style) noexcept {
-    _timestamp_style.store(timestamp_style);
+logger::set_logger_timestamp_style(logger_timestamp_style timestamp_style, conflict_resolution_policy p) noexcept {
+    auto _ = std::lock_guard(_global_config_mutex);
+    _timestamp_style.update(timestamp_style, p);
     switch (_timestamp_style.load(std::memory_order_relaxed)) {
     case logger_timestamp_style::none:
         print_timestamp = print_no_timestamp;
@@ -358,10 +365,10 @@ bool logger::is_shard_zero() noexcept {
 }
 
 void
-logger_registry::set_all_loggers_level(log_level level) {
+logger_registry::set_all_loggers_level(log_level level, conflict_resolution_policy p) {
     std::lock_guard<std::mutex> g(_mutex);
     for (auto&& l : _loggers | boost::adaptors::map_values) {
-        l->set_level(level);
+        l->set_level(level, p);
     }
 }
 
@@ -372,9 +379,9 @@ logger_registry::get_logger_level(sstring name) const {
 }
 
 void
-logger_registry::set_logger_level(sstring name, log_level level) {
+logger_registry::set_logger_level(sstring name, log_level level, conflict_resolution_policy p) {
     std::lock_guard<std::mutex> g(_mutex);
-    _loggers.at(name)->set_level(level);
+    _loggers.at(name)->set_level(level, p);
 }
 
 std::vector<sstring>

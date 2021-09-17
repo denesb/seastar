@@ -117,11 +117,12 @@ public:
 /// It is possible to rate-limit log messages, see \ref logger::rate_limit.
 class logger {
     sstring _name;
-    std::atomic<log_level> _level = { log_level::info };
-    static std::ostream* _out;
-    static std::atomic<bool> _ostream;
-    static std::atomic<bool> _syslog;
-    static std::atomic<logger_timestamp_style> _timestamp_style;
+    config_value<log_level> _level = config_value<log_level>(log_level::info);
+    static std::mutex _global_config_mutex;
+    static config_value<std::ostream*> _out;
+    static config_value<bool> _ostream;
+    static config_value<bool> _syslog;
+    static config_value<logger_timestamp_style> _timestamp_style;
 
 public:
     class log_writer {
@@ -408,29 +409,29 @@ public:
 
     /// \param level - set the log level
     ///
-    void set_level(log_level level) noexcept {
-        _level.store(level, std::memory_order_relaxed);
+    void set_level(log_level level, conflict_resolution_policy p = conflict_resolution_policy::new_overwrites_existing) noexcept {
+        _level.update(level, p);
     }
 
     /// Set output stream, default is std::cerr
-    static void set_ostream(std::ostream& out) noexcept;
+    static void set_ostream(std::ostream& out, conflict_resolution_policy p = conflict_resolution_policy::new_overwrites_existing) noexcept;
 
     /// Also output to ostream. default is true
-    static void set_ostream_enabled(bool enabled) noexcept;
+    static void set_ostream_enabled(bool enabled, conflict_resolution_policy p = conflict_resolution_policy::new_overwrites_existing) noexcept;
 
     /// Also output to stdout. default is true
     [[deprecated("Use set_ostream_enabled instead")]]
-    static void set_stdout_enabled(bool enabled) noexcept;
+    static void set_stdout_enabled(bool enabled, conflict_resolution_policy p = conflict_resolution_policy::new_overwrites_existing) noexcept;
 
     /// Also output to syslog. default is false
     ///
     /// NOTE: syslog() can block, which will stall the reactor thread.
     ///       this should be rare (will have to fill the pipe buffer
     ///       before syslogd can clear it) but can happen.
-    static void set_syslog_enabled(bool enabled) noexcept;
+    static void set_syslog_enabled(bool enabled, conflict_resolution_policy p = conflict_resolution_policy::new_overwrites_existing) noexcept;
 
     /// Set the logger timestamp style. default is real.
-    static void set_logger_timestamp_style(logger_timestamp_style timestamp_style) noexcept;
+    static void set_logger_timestamp_style(logger_timestamp_style timestamp_style, conflict_resolution_policy p = conflict_resolution_policy::new_overwrites_existing) noexcept;
 };
 
 /// \brief used to keep a static registry of loggers
@@ -449,7 +450,7 @@ public:
     /// Note: this method locks
     ///
     /// \param level - desired level: error,info,...
-    void set_all_loggers_level(log_level level);
+    void set_all_loggers_level(log_level level, conflict_resolution_policy p = conflict_resolution_policy::new_overwrites_existing);
 
     /// Given a name for a logger returns the log_level enum
     /// Note: this method locks
@@ -462,7 +463,7 @@ public:
     ///
     /// \param name - name of logger
     /// \param level - desired level of logging
-    void set_logger_level(sstring name, log_level level);
+    void set_logger_level(sstring name, log_level level, conflict_resolution_policy p = conflict_resolution_policy::new_overwrites_existing);
 
     /// Returns a list of registered loggers
     /// Note: this method locks
