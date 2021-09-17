@@ -412,10 +412,8 @@ logger_registry::moved(logger* from, logger* to) {
     _loggers[from->name()] = to;
 }
 
-void apply_logging_settings(const logging_settings& s) {
-    global_logger_registry().set_all_loggers_level(s.default_level);
-
-    for (const auto& pair : s.logger_levels) {
+static void apply_log_levels(const std::unordered_map<sstring, log_level>& logger_levels) {
+    for (const auto& pair : logger_levels) {
         try {
             global_logger_registry().set_logger_level(pair.first, pair.second);
         } catch (const std::out_of_range&) {
@@ -424,9 +422,11 @@ void apply_logging_settings(const logging_settings& s) {
                                         pair.first));
         }
     }
+}
 
-    logger_ostream_type logger_ostream = s.stdout_enabled ? s.logger_ostream : logger_ostream_type::none;
-    switch (logger_ostream) {
+static void apply_ostream(logger_ostream_type logger_ostream, bool stdout_enabled) {
+    logger_ostream_type os = stdout_enabled ? logger_ostream : logger_ostream_type::none;
+    switch (os) {
     case logger_ostream_type::none:
         logger::set_ostream_enabled(false);
         break;
@@ -439,8 +439,13 @@ void apply_logging_settings(const logging_settings& s) {
         logger::set_ostream_enabled(true);
         break;
     }
-    logger::set_syslog_enabled(s.syslog_enabled);
+}
 
+void apply_logging_settings(const logging_settings& s) {
+    global_logger_registry().set_all_loggers_level(s.default_level);
+    apply_log_levels(s.logger_levels);
+    apply_ostream(s.logger_ostream, s.stdout_enabled);
+    logger::set_syslog_enabled(s.syslog_enabled);
     logger::set_logger_timestamp_style(s.stdout_timestamp_style);
 }
 
