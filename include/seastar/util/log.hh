@@ -76,6 +76,34 @@ enum class logger_timestamp_style {
     real,
 };
 
+/// \brief How to resolve conflicts when overwriting settings.
+enum class conflict_resolution_policy : uint8_t {
+    existing_overwrites_new = 0,
+    new_overwrites_existing,
+};
+
+/// \cond internal
+template <typename T>
+class config_value {
+    // Allow reads without taking a mutex
+    std::atomic<T> _value;
+    bool _is_default = true;
+
+public:
+    explicit config_value(T default_value) : _value(default_value) { }
+
+    T load(std::memory_order order = std::memory_order_seq_cst) const {
+        return _value.load(order);
+    }
+    void update(T new_value, conflict_resolution_policy p) {
+        if (_is_default || p == conflict_resolution_policy::new_overwrites_existing) {
+            _value.store(new_value);
+            _is_default = false;
+        }
+    }
+};
+/// \endcond
+
 /// \brief Logger class for ostream or syslog.
 ///
 /// Java style api for logging.
