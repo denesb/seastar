@@ -182,7 +182,7 @@ app_template::run_deprecated(int ac, char ** av, std::function<void ()>&& func) 
 
     // Needs to be before `smp::configure()`.
     try {
-        apply_logging_settings(log_cli::extract_settings(configuration));
+        log_cli::apply_logging_settings(configuration);
     } catch (const std::runtime_error& exn) {
         std::cout << "logging configuration error: " << exn.what() << '\n';
         return 1;
