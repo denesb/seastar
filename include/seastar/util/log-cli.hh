@@ -73,6 +73,9 @@ void parse_logger_levels(const program_options::string_map& levels, OutputIter o
 //
 logging_settings extract_settings(const boost::program_options::variables_map&);
 
+/// \brief Apply the CLI options to the logging configuration.
+void apply_logging_settings(const boost::program_options::variables_map&);
+
 }
 
 }

@@ -530,6 +530,32 @@ logging_settings extract_settings(const boost::program_options::variables_map& v
     };
 }
 
+void apply_logging_settings(const boost::program_options::variables_map& vars) {
+    const auto p = conflict_resolution_policy::new_overwrites_existing;
+    if (!vars["default-log-level"].defaulted()) {
+        global_logger_registry().set_all_loggers_level(parse_log_level(vars["default-log-level"].as<sstring>()), p);
+    }
+
+    const auto& raw_levels = vars["logger-log-level"].as<program_options::string_map>();
+
+    std::unordered_map<sstring, log_level> levels;
+    parse_logger_levels(raw_levels, std::inserter(levels, levels.begin()));
+
+    apply_log_levels(levels, p);
+
+    if (!vars["logger-ostream-type"].defaulted() || !vars["log-to-stdout"].defaulted()) {
+        apply_ostream(vars["logger-ostream-type"].as<logger_ostream_type>(), vars["log-to-stdout"].as<bool>(), p);
+    }
+
+    if (!vars["log-to-syslog"].defaulted()) {
+        logger::set_syslog_enabled(vars["log-to-syslog"].as<bool>(), p);
+    }
+
+    if (!vars["logger-stdout-timestamps"].defaulted()) {
+        logger::set_logger_timestamp_style(vars["logger-stdout-timestamps"].as<logger_timestamp_style>(), p);
+    }
+}
+
 }
 
 }
