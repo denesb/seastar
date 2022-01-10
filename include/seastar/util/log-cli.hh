@@ -101,18 +101,6 @@ log_level parse_log_level(const sstring&);
 void parse_map_associations(const std::string& v, std::function<void(std::string, std::string)> consume_key_value);
 /// \endcond
 
-//
-// \brief Parse associations from loggers to log-levels and write the resulting pairs to the output iterator.
-//
-// \throws \c std::runtime_error for an invalid log-level.
-//
-template <class OutputIter>
-void parse_logger_levels(const program_options::string_map& levels, OutputIter out) {
-    std::for_each(levels.begin(), levels.end(), [&out](auto&& pair) {
-        *out++ = std::make_pair(pair.first, parse_log_level(pair.second));
-    });
-}
-
 ///
 /// \brief Extract CLI options into a logging configuration.
 //

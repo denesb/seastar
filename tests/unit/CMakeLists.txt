@@ -359,10 +359,6 @@ seastar_add_test (packet
   KIND BOOST
   SOURCES packet_test.cc)
 
-seastar_add_test (program_options
-  KIND BOOST
-  SOURCES program_options_test.cc)
-
 seastar_add_test (queue
   SOURCES queue_test.cc)
 
