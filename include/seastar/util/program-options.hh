@@ -63,6 +63,7 @@ namespace program_options {
 /// advertizing our inheritance of \c std::unordered_map would introduce the possibility of memory leaks since STL
 /// containers do not declare virtual destructors.
 ///
+[[deprecated("This class is not used internally anymore and will soon be removed")]]
 class string_map final : private std::unordered_map<sstring, sstring> {
 private:
     using base = std::unordered_map<sstring, sstring>;
